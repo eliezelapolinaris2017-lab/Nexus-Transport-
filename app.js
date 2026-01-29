@@ -1,6 +1,7 @@
 /*************************************************
- SAMMY TOWING INC — Nexus Transport Manager v13.2
- app.js — versión corporativa con PDF y persistencia
+ SAMMY TOWING INC — Nexus Transport Manager v14
+ app.js — versión contable PRO con Retenciones, 
+ Deducciones y Pagos
 *************************************************/
 
 // ===== BASE LOCAL =====
@@ -8,8 +9,12 @@ const store = {
   proveedores: JSON.parse(localStorage.getItem("proveedores") || "[]"),
   choferes: JSON.parse(localStorage.getItem("choferes") || "[]"),
   millas: JSON.parse(localStorage.getItem("millas") || "[]"),
+  pagos: JSON.parse(localStorage.getItem("pagos") || "[]"),
+  retenciones: JSON.parse(localStorage.getItem("retenciones") || "[]"),
+  deducciones: JSON.parse(localStorage.getItem("deducciones") || "[]"),
   config: JSON.parse(localStorage.getItem("config") || "{}")
 };
+
 function save(k){ localStorage.setItem(k, JSON.stringify(store[k])); }
 function saveAll(){ for(const k in store) save(k); }
 
@@ -24,8 +29,13 @@ document.querySelectorAll(".tabs button").forEach(btn=>{
   btn.onclick=()=>{
     document.querySelectorAll(".tab").forEach(t=>t.classList.add("hidden"));
     document.getElementById(btn.dataset.tab).classList.remove("hidden");
-    if(btn.dataset.tab==="cierres") renderCierre();
-    if(btn.dataset.tab==="flujo") renderFlujo();
+    switch(btn.dataset.tab){
+      case "cierres": renderCierre(); break;
+      case "flujo": renderFlujo(); break;
+      case "retenciones": renderRetenciones(); break;
+      case "deducciones": renderDeducciones(); break;
+      case "pagos": renderPagos(); break;
+    }
   };
 });
 
@@ -133,62 +143,193 @@ function renderCierre(){
   }
   document.getElementById("tablaCierres").innerHTML=h+"</table>";
 }
+/*************************************************
+  🧾 RETENCIONES 10% / DEDUCCIONES / PAGOS
+*************************************************/
 
-// ===== PDF CORPORATIVO CIERRE =====
-pdfCierre.onclick=()=>{
+// ===== RETENCIONES 10% =====
+function renderRetenciones(){
+  const data = calcularCierre();
+  let h = "<table><tr><th>Chofer</th><th>Retención 10%</th><th>Estado</th><th></th></tr>";
+  for(const c in data){
+    const r = data[c];
+    const ret = r.gan * 0.10;
+    const registro = store.retenciones.find(x=>x.chofer===c) || {estado:"Pendiente"};
+    h += `<tr>
+      <td>${c}</td>
+      <td>$${ret.toFixed(2)}</td>
+      <td>${registro.estado}</td>
+      <td><button onclick="toggleRetencion('${c}')">✔️ Cambiar</button></td>
+    </tr>`;
+  }
+  document.getElementById("tablaRetenciones").innerHTML = h + "</table>";
+  save("retenciones");
+}
+
+function toggleRetencion(chofer){
+  const r = store.retenciones.find(x=>x.chofer===chofer);
+  if(r){
+    r.estado = r.estado === "Pendiente" ? "Enviada" : "Pendiente";
+  }else{
+    store.retenciones.push({chofer, estado:"Enviada"});
+  }
+  save("retenciones");
+  renderRetenciones();
+}
+
+// ===== PDF RETENCIONES =====
+pdfRetenciones.onclick=()=>{
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  const empresa=store.config.nombre||"SAMMY TOWING INC";
+  const fecha=new Date().toLocaleDateString();
+  const data=calcularCierre();
+
+  if(store.config.logo) doc.addImage(store.config.logo,"PNG",150,8,35,20);
+  doc.setFontSize(16); doc.setTextColor(255,0,0);
+  doc.text(empresa,10,15);
+  doc.setDrawColor(200,0,0); doc.line(10,18,200,18);
+  doc.setFontSize(11); doc.setTextColor(0);
+  doc.text("Reporte de Retenciones 10%",10,26);
+  doc.text(`Fecha: ${fecha}`,10,33);
+
+  let y=48, total=0;
+  for(const c in data){
+    const r=data[c];
+    const ret=r.gan*0.10; total+=ret;
+    const estado=(store.retenciones.find(x=>x.chofer===c)||{estado:"Pendiente"}).estado;
+    doc.text(`${c.padEnd(20)} $${ret.toFixed(2)}   Estado: ${estado}`,10,y);
+    y+=7;
+  }
+  y+=10;doc.setDrawColor(200,0,0);doc.line(10,y,200,y);
+  y+=8;doc.setTextColor(255,0,0);doc.text(`Total Retenciones: $${total.toFixed(2)}`,10,y);
+  doc.save(`Retenciones_${fecha}.pdf`);
+};
+
+// ===== DEDUCCIONES A PROVEEDORES =====
+function renderDeducciones(){
+  const vm=store.config.valorMilla||1;
+  const data={};
+  store.millas.forEach(m=>{
+    const p=store.proveedores.find(x=>x.nombre===m.proveedor);
+    if(!p)return;
+    const ded=(m.millas*vm)*(p.porc/100);
+    if(!data[m.proveedor])data[m.proveedor]={total:0};
+    data[m.proveedor].total+=ded;
+  });
+  let h="<table><tr><th>Proveedor</th><th>Deducción Total</th></tr>";
+  for(const p in data){
+    h+=`<tr><td>${p}</td><td>$${data[p].total.toFixed(2)}</td></tr>`;
+  }
+  document.getElementById("tablaDeducciones").innerHTML=h+"</table>";
+  store.deducciones=data; save("deducciones");
+}
+
+// ===== PDF DEDUCCIONES =====
+pdfDeducciones.onclick=()=>{
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  const empresa=store.config.nombre||"SAMMY TOWING INC";
+  const fecha=new Date().toLocaleDateString();
+  const data=store.deducciones;
+
+  if(store.config.logo) doc.addImage(store.config.logo,"PNG",150,8,35,20);
+  doc.setFontSize(16); doc.setTextColor(255,0,0);
+  doc.text(empresa,10,15);
+  doc.setDrawColor(200,0,0); doc.line(10,18,200,18);
+  doc.setFontSize(11); doc.setTextColor(0);
+  doc.text("Reporte de Deducciones a Proveedores",10,26);
+  doc.text(`Fecha: ${fecha}`,10,33);
+
+  let y=48,total=0;
+  for(const p in data){
+    const v=data[p].total; total+=v;
+    doc.text(`${p.padEnd(20)} $${v.toFixed(2)}`,10,y);
+    y+=7;
+  }
+  y+=10; doc.setTextColor(255,0,0);
+  doc.text(`Total Deducciones: $${total.toFixed(2)}`,10,y);
+  doc.save(`Deducciones_${fecha}.pdf`);
+};
+
+// ===== PAGOS A CHOFERES =====
+function renderPagos(){
+  const cierres=calcularCierre();
+  let h="<table><tr><th>Chofer</th><th>Ganancia</th><th>Pagado</th><th>Pendiente</th><th>Estado</th><th></th></tr>";
+  for(const c in cierres){
+    const g=cierres[c].gan;
+    const reg=store.pagos.find(x=>x.chofer===c)||{pagado:0};
+    const pendiente=g-reg.pagado;
+    let estado="Pendiente";
+    if(pendiente<=0)estado="Pagado";
+    else if(pendiente<g)estado="Parcial";
+    h+=`<tr>
+      <td>${c}</td>
+      <td>$${g.toFixed(2)}</td>
+      <td>$${reg.pagado.toFixed(2)}</td>
+      <td>$${pendiente.toFixed(2)}</td>
+      <td>${estado}</td>
+      <td><button onclick="registrarPago('${c}',${g},${reg.pagado})">💵 Pago</button></td>
+    </tr>`;
+  }
+  document.getElementById("tablaPagos").innerHTML=h+"</table>";
+  save("pagos");
+}
+
+function registrarPago(chofer,g,actual){
+  const monto=parseFloat(prompt(`Ingrese monto pagado a ${chofer}:`,0))||0;
+  if(!monto)return;
+  let reg=store.pagos.find(x=>x.chofer===chofer);
+  if(!reg){reg={chofer,pagado:0};store.pagos.push(reg);}
+  reg.pagado+=monto; if(reg.pagado>g)reg.pagado=g;
+  save("pagos"); renderPagos();
+}
+
+// ===== PDF PAGOS =====
+pdfPagos.onclick=()=>{
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:"landscape"});
   const empresa=store.config.nombre||"SAMMY TOWING INC";
   const fecha=new Date().toLocaleDateString();
-  const valorMilla=store.config.valorMilla?.toFixed(2)||"1.00";
-  const data=calcularCierre();
+  const cierres=calcularCierre();
 
   if(store.config.logo) doc.addImage(store.config.logo,"PNG",250,8,35,25);
   doc.setFontSize(18); doc.setTextColor(255,0,0);
   doc.text(empresa,10,18);
   doc.setDrawColor(200,0,0); doc.line(10,21,280,21);
   doc.setFontSize(11); doc.setTextColor(0);
-  doc.text("Reporte de Cierre Semanal",10,29);
+  doc.text("Reporte de Pagos a Choferes",10,29);
   doc.text(`Fecha: ${fecha}`,10,36);
-  doc.text(`Valor por milla: $${valorMilla}`,10,43);
 
-  let y=55; doc.setFontSize(10);
-  doc.text("Chofer",10,y); doc.text("Millas",55,y);
-  doc.text("Bruto",90,y); doc.text("Ganancia",125,y);
-  doc.text("Deducción",165,y); doc.text("Neto",205,y);
-  doc.line(10,y+2,270,y+2); y+=10;
+  let y=55;
+  doc.text("Chofer",10,y); doc.text("Ganancia",70,y);
+  doc.text("Pagado",110,y); doc.text("Pendiente",150,y);
+  doc.text("Estado",190,y); y+=8;
 
-  let tb=0,tg=0,td=0,tn=0;
-  for(const c in data){
-    const r=data[c];const n=r.gan-r.ded;
-    tb+=r.bruto;tg+=r.gan;td+=r.ded;tn+=n;
-    doc.text(c,10,y);doc.text(String(r.millas),55,y);
-    doc.text(`$${r.bruto.toFixed(2)}`,90,y);
-    doc.text(`$${r.gan.toFixed(2)}`,125,y);
-    doc.text(`$${r.ded.toFixed(2)}`,165,y);
-    doc.text(`$${n.toFixed(2)}`,205,y);
-    y+=8;if(y>180){doc.addPage("landscape");y=20;}
+  for(const c in cierres){
+    const g=cierres[c].gan;
+    const reg=store.pagos.find(x=>x.chofer===c)||{pagado:0};
+    const pendiente=g-reg.pagado;
+    let estado="Pendiente";
+    if(pendiente<=0)estado="Pagado";
+    else if(pendiente<g)estado="Parcial";
+    doc.text(c,10,y);
+    doc.text(`$${g.toFixed(2)}`,70,y);
+    doc.text(`$${reg.pagado.toFixed(2)}`,110,y);
+    doc.text(`$${pendiente.toFixed(2)}`,150,y);
+    doc.text(estado,190,y);
+    y+=7;
   }
-
-  doc.setDrawColor(180,0,0);doc.line(10,y,270,y);
-  y+=8;doc.setFontSize(11);doc.setTextColor(255,0,0);
-  doc.text("TOTALES GENERALES",10,y);
-  doc.text(`$${tb.toFixed(2)}`,90,y);
-  doc.text(`$${tg.toFixed(2)}`,125,y);
-  doc.text(`$${td.toFixed(2)}`,165,y);
-  doc.text(`$${tn.toFixed(2)}`,205,y);
-
-  y+=25;doc.setTextColor(0);doc.setFontSize(9);
-  doc.text("Aprobado por: ____________________________",10,y);
-  y+=20;doc.setDrawColor(180,0,0);doc.line(10,y,280,y);
-  y+=8;doc.setTextColor(120);
-  doc.text("Generado con Nexus Transport Manager v13 — SAMMY TOWING INC",10,y);
-  doc.save(`Cierre_Semanal_${fecha}.pdf`);
-};
+  doc.save(`Pagos_${fecha}.pdf`);
+}
+/*************************************************
+  💰 FLUJO DE CAJA / CONFIGURACIÓN / BACKUP / PIN
+*************************************************/
 
 // ===== FLUJO DE CAJA =====
 function renderFlujo(){
-  const d=calcularCierre();let tb=0,tg=0,td=0;for(const c in d){tb+=d[c].bruto;tg+=d[c].gan;td+=d[c].ded;}
+  const d=calcularCierre();let tb=0,tg=0,td=0;
+  for(const c in d){tb+=d[c].bruto;tg+=d[c].gan;td+=d[c].ded;}
   const tn=tg-td;
   document.getElementById("tablaFlujo").innerHTML=`
     <div class='kpi'>
@@ -222,7 +363,7 @@ function exportarFlujoPDF(tb,tg,td,tn){
   doc.text(`Balance Neto Final: $${tn.toFixed(2)}`,10,74);
   doc.setDrawColor(180,0,0);doc.line(10,120,200,120);
   doc.setFontSize(9);doc.setTextColor(120);
-  doc.text("Generado con Nexus Transport Manager v13 — SAMMY TOWING INC",10,126);
+  doc.text("Generado con Nexus Transport Manager v14 — SAMMY TOWING INC",10,126);
   doc.save(`Flujo_Caja_${fecha}.pdf`);
 }
 
@@ -237,49 +378,76 @@ saveConfig.onclick=()=>{
     const r=new FileReader();
     r.onload=e=>{
       store.config.logo=e.target.result;
-      saveAll();alert("Configuración guardada ✅");
+      saveAll();
       renderLogoPreview();
+      alert("Configuración guardada ✅");
     };
     r.readAsDataURL(f);
-  } else {saveAll();alert("Configuración guardada ✅");}
+  } else {
+    saveAll();
+    alert("Configuración guardada ✅");
+  }
 };
 
 // Mostrar logo al cargar
 function renderLogoPreview(){
   if(store.config.logo){
     let img=document.getElementById("logoPreview");
-    if(!img){img=document.createElement("img");img.id="logoPreview";
-      img.style="width:120px;margin-top:10px;border-radius:6px;display:block;";}
-    img.src=store.config.logo;logoInput.insertAdjacentElement("afterend",img);
+    if(!img){
+      img=document.createElement("img");
+      img.id="logoPreview";
+      img.style="width:120px;margin-top:10px;border-radius:6px;display:block;";
+    }
+    img.src=store.config.logo;
+    logoInput.insertAdjacentElement("afterend",img);
   }
 }
-window.addEventListener("load",renderLogoPreview);
+window.addEventListener("load",()=>{
+  renderLogoPreview();
+  // Rellenar inputs guardados
+  if(store.config.pin) pinInput.value=store.config.pin;
+  if(store.config.valorMilla) valorMillaInput.value=store.config.valorMilla;
+  if(store.config.umbralAlto) umbralAlto.value=store.config.umbralAlto;
+  if(store.config.umbralMedio) umbralMedio.value=store.config.umbralMedio;
+});
 
 // ===== BACKUP + IMPORT =====
 backupAll.onclick=()=>{
   const b=new Blob([JSON.stringify(store,null,2)],{type:"application/json"});
   const a=document.createElement("a");
-  a.href=URL.createObjectURL(b);a.download="backup_sammy_towing.json";a.click();
+  a.href=URL.createObjectURL(b);
+  a.download="backup_sammy_towing.json";
+  a.click();
 };
+
 const imp=document.createElement("button");
-imp.textContent="Importar Backup";config.appendChild(imp);
+imp.textContent="Importar Backup";
+config.appendChild(imp);
 imp.onclick=()=>{
-  const i=document.createElement("input");i.type="file";i.accept=".json";
+  const i=document.createElement("input");
+  i.type="file"; i.accept=".json";
   i.onchange=e=>{
     const r=new FileReader();
     r.onload=x=>{
       Object.assign(store,JSON.parse(x.target.result));
-      saveAll();alert("Backup restaurado ✅");location.reload();
+      saveAll();
+      alert("Backup restaurado ✅");
+      location.reload();
     };
     r.readAsText(e.target.files[0]);
-  };i.click();
+  };
+  i.click();
 };
 
 // ===== SEGURIDAD =====
 logoutBtn.onclick=()=>{
   const p=prompt("PIN de seguridad:");
-  if(p===store.config.pin){alert("Sesión cerrada ✅");location.reload();}
-  else alert("PIN incorrecto ❌");
+  if(p===store.config.pin){
+    alert("Sesión cerrada ✅");
+    location.reload();
+  } else {
+    alert("PIN incorrecto ❌");
+  }
 };
 
-console.log("✅ SAMMY TOWING INC v13.2 cargado correctamente.");
+console.log("✅ SAMMY TOWING INC v14 cargado correctamente.");
