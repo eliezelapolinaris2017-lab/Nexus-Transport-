@@ -373,6 +373,7 @@ saveConfig.onclick=()=>{
   store.config.valorMilla=parseFloat(valorMillaInput.value)||1;
   store.config.umbralAlto=parseFloat(umbralAlto.value)||1000;
   store.config.umbralMedio=parseFloat(umbralMedio.value)||400;
+ if(store.config.logo) document.body.style.setProperty("background-image", `url(${store.config.logo})`);
   const f=logoInput.files[0];
   if(f){
     const r=new FileReader();
