@@ -257,7 +257,7 @@ tr:hover td { background: rgba(255,0,0,0.08); }
 ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
 
-/* ===== LOGO DE FONDO CORPORATIVO ===== */
+/* ===== LOGO DE FONDO CORPORATIVO (DEFINIDO) ===== */
 body::before{
   content:"";
   position:fixed;
@@ -267,10 +267,10 @@ body::before{
 
   background-repeat:no-repeat;
   background-position:center;
-  background-size:320px auto;
-
-  opacity:0.08;
-  filter:grayscale(100%);
+  background-size:420px auto;   /* más definido */
+  
+  opacity:0.12;                 /* más presencia */
+  filter: grayscale(30%) contrast(110%) brightness(95%);
 }
 
 /* UI siempre encima */
