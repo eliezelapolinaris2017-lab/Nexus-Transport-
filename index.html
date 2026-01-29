@@ -3,96 +3,147 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Nexus Transport Manager</title>
+  <title>SAMMY TOWING INC — Nexus Transport Manager</title>
+
   <link rel="stylesheet" href="styles.css"/>
+
+  <!-- Firebase (por compatibilidad futura) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
 
   <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 
 <body>
-  <header class="topbar">
+
+  <!-- ===== TOPBAR ===== -->
+  <header class="topbar" id="topbar">
     <div class="brand">
-      <div class="logo">NT</div>
-      <div class="title">Nexus Transport Manager</div>
+      <div class="logo">ST</div>
+      <div class="title">SAMMY TOWING INC</div>
     </div>
     <button id="logoutBtn">Salir</button>
   </header>
 
+  <!-- ===== NAVIGATION ===== -->
   <nav class="tabs">
     <button data-tab="proveedores">Proveedores</button>
     <button data-tab="choferes">Choferes</button>
-    <button data-tab="config">Configuración</button>
-    <button data-tab="millas">Millas</button>
+    <button data-tab="millas">Millas Recorridas</button>
     <button data-tab="cierres">Cierre Semanal</button>
-    <button data-tab="flujo">Flujo Caja</button>
+    <button data-tab="flujo">Flujo de Caja</button>
+    <button data-tab="config">Configuración</button>
   </nav>
 
-  <main id="content">
+  <!-- ===== MAIN ===== -->
+  <main>
 
-    <!-- PROVEEDORES -->
-    <section id="proveedores" class="tab active">
-      <h2>Proveedores de Servicios</h2>
+    <!-- ========== PROVEEDORES ========== -->
+    <section id="proveedores" class="tab">
+      <h2>Gestión de Proveedores</h2>
       <form id="formProveedor">
-        <input placeholder="Nombre del proveedor" id="provNombre" required>
-        <input placeholder="Porcentaje de deducción (%)" id="provPorc" type="number" required>
-        <button>Agregar</button>
+        <input id="provNombre" placeholder="Nombre del proveedor" required>
+        <input id="provPorc" type="number" step="0.01" placeholder="% Deducción" required>
+        <button type="submit">Añadir</button>
       </form>
-      <table id="tablaProveedores">
-        <tr><th>Nombre</th><th>Deducción</th><th></th></tr>
-      </table>
-      <button class="pdf">Exportar PDF</button>
+      <table id="tablaProveedores"></table>
     </section>
 
-    <!-- CHOFERES -->
+    <!-- ========== CHOFERES ========== -->
     <section id="choferes" class="tab hidden">
-      <h2>Choferes</h2>
+      <h2>Gestión de Choferes</h2>
       <form id="formChofer">
-        <input placeholder="Nombre del chofer" id="chNombre" required>
-        <input placeholder="Ganancia (%)" id="chGanancia" type="number" required>
-        <input placeholder="Deducción (%)" id="chDeduccion" type="number" required>
-        <button>Agregar</button>
+        <input id="chNombre" placeholder="Nombre del chofer" required>
+        <input id="chGanancia" type="number" step="0.01" placeholder="% Ganancia" required>
+        <input id="chDeduccion" type="number" step="0.01" placeholder="% Deducción" required>
+        <button type="submit">Añadir</button>
       </form>
-      <table id="tablaChoferes">
-        <tr><th>Nombre</th><th>Ganancia</th><th>Deducción</th><th></th></tr>
-      </table>
+      <table id="tablaChoferes"></table>
     </section>
 
-    <!-- CONFIGURACIÓN -->
-    <section id="config" class="tab hidden">
-      <h2>Configuración General</h2>
-      <label>Logo: <input type="file" id="logoInput"></label><br>
-      <label>PIN de Seguridad: <input type="password" id="pinInput"></label><br>
-      <button id="saveConfig">Guardar Configuración</button>
-      <button id="backupAll">Backup General</button>
-    </section>
-
-    <!-- MILLAS -->
+    <!-- ========== MILLAS ========== -->
     <section id="millas" class="tab hidden">
-      <h2>Millas Recorridas</h2>
+      <h2>Registro de Millas Recorridas</h2>
+
+      <!-- KPIs GLASS RED -->
+      <div id="millasKPI" class="kpi">
+        <div class="kpiCard glass" id="kpiMillas">
+          <h3>🧭 Total Millas</h3>
+          <p>0</p>
+        </div>
+        <div class="kpiCard glass" id="kpiServicios">
+          <h3>📋 Servicios</h3>
+          <p>0</p>
+        </div>
+        <div class="kpiCard glass" id="kpiValor">
+          <h3>💵 Valor Total</h3>
+          <p>$0.00</p>
+        </div>
+      </div>
+
+      <!-- FILTROS -->
+      <div id="filtrosMillas" class="filters">
+        <select id="filtroChofer">
+          <option value="">Filtrar por Chofer</option>
+        </select>
+        <select id="filtroProveedor">
+          <option value="">Filtrar por Proveedor</option>
+        </select>
+        <button id="btnMostrarTodo">Mostrar Todo</button>
+      </div>
+
+      <!-- FORMULARIO -->
       <form id="formMillas">
-        <input placeholder="Chofer" id="mChofer" required>
-        <input placeholder="Proveedor" id="mProveedor" required>
-        <input placeholder="Millas" id="mMillas" type="number" required>
-        <button>Registrar</button>
+        <input id="mChofer" placeholder="Chofer" required>
+        <input id="mProveedor" placeholder="Proveedor" required>
+        <input id="mMillas" type="number" placeholder="Millas recorridas" required>
+        <button type="submit">Añadir</button>
       </form>
-      <table id="tablaMillas">
-        <tr><th>Chofer</th><th>Proveedor</th><th>Millas</th><th></th></tr>
-      </table>
+
+      <!-- TABLA -->
+      <table id="tablaMillas"></table>
     </section>
 
-    <!-- CIERRE SEMANAL -->
+    <!-- ========== CIERRE SEMANAL ========== -->
     <section id="cierres" class="tab hidden">
       <h2>Cierre Semanal</h2>
       <div id="tablaCierres"></div>
       <button id="pdfCierre" class="pdf">Exportar Cierre PDF</button>
     </section>
 
-    <!-- FLUJO DE CAJA -->
+    <!-- ========== FLUJO DE CAJA ========== -->
     <section id="flujo" class="tab hidden">
-      <h2>Flujo de Caja</h2>
+      <h2>Flujo de Caja Semanal</h2>
       <div id="tablaFlujo"></div>
     </section>
+
+    <!-- ========== CONFIGURACIÓN ========== -->
+    <section id="config" class="tab hidden">
+      <h2>Configuración General</h2>
+
+      <div class="configBox">
+        <label>Logo del Negocio:</label>
+        <input id="logoInput" type="file" accept="image/png,image/jpeg">
+
+        <label>PIN de Seguridad:</label>
+        <input id="pinInput" type="password" placeholder="****">
+
+        <label>Valor por milla ($):</label>
+        <input id="valorMillaInput" type="number" step="0.01" placeholder="1.00">
+
+        <label>Umbral Alto ($):</label>
+        <input id="umbralAlto" type="number" step="0.01" placeholder="1000">
+
+        <label>Umbral Medio ($):</label>
+        <input id="umbralMedio" type="number" step="0.01" placeholder="400">
+
+        <button id="saveConfig">Guardar Configuración</button>
+        <button id="backupAll">Backup General</button>
+      </div>
+    </section>
+
   </main>
 
   <script src="app.js"></script>
