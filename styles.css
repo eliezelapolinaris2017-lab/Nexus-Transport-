@@ -256,3 +256,25 @@ tr:hover td { background: rgba(255,0,0,0.08); }
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 10px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--accent2); }
+
+/* ===== LOGO DE FONDO CORPORATIVO ===== */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:0;
+  pointer-events:none;
+
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:320px auto;
+
+  opacity:0.08;
+  filter:grayscale(100%);
+}
+
+/* UI siempre encima */
+header, nav, main, .tab{
+  position:relative;
+  z-index:2;
+}
