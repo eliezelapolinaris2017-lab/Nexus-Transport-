@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SAMMY TOWING INC — Transport Manager</title>
+  <title>SAMMY TOWING INC — Transport Manager v14</title>
 
   <link rel="stylesheet" href="styles.css" />
 
-  <!-- jsPDF para exportaciones -->
+  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 
@@ -27,6 +27,9 @@
     <button data-tab="choferes">Choferes</button>
     <button data-tab="millas">Millas</button>
     <button data-tab="cierres">Cierre Semanal</button>
+    <button data-tab="retenciones">Retenciones 10%</button>
+    <button data-tab="deducciones">Deducciones Proveedores</button>
+    <button data-tab="pagos">Pagos Choferes</button>
     <button data-tab="flujo">Flujo de Caja</button>
     <button data-tab="config">Configuración</button>
   </nav>
@@ -60,22 +63,18 @@
     <!-- === Millas === -->
     <section id="millas" class="tab hidden">
       <h2>Registro de Millas Recorridas</h2>
-
-      <!-- KPIs -->
       <div id="millasKPI" class="kpi">
         <div class="kpiCard" id="kpiMillas"><h3>🧭 Total Millas</h3><p>0</p></div>
         <div class="kpiCard" id="kpiServicios"><h3>📋 Servicios</h3><p>0</p></div>
         <div class="kpiCard" id="kpiValor"><h3>💵 Valor Total</h3><p>$0.00</p></div>
       </div>
 
-      <!-- Filtros -->
       <div class="filters">
         <select id="filtroChofer"><option value="">Filtrar por Chofer</option></select>
         <select id="filtroProveedor"><option value="">Filtrar por Proveedor</option></select>
         <button id="btnMostrarTodo">Mostrar Todo</button>
       </div>
 
-      <!-- Formulario -->
       <form id="formMillas">
         <select id="mChofer" required><option value="">Seleccionar Chofer</option></select>
         <select id="mProveedor" required><option value="">Seleccionar Proveedor</option></select>
@@ -83,7 +82,6 @@
         <button type="submit">Registrar</button>
       </form>
 
-      <!-- Tabla -->
       <table id="tablaMillas"></table>
     </section>
 
@@ -92,6 +90,27 @@
       <h2>Cierre Semanal</h2>
       <div id="tablaCierres"></div>
       <button id="pdfCierre">Exportar Cierre PDF</button>
+    </section>
+
+    <!-- === Retenciones 10% === -->
+    <section id="retenciones" class="tab hidden">
+      <h2>Retenciones 10% por Chofer</h2>
+      <div id="tablaRetenciones"></div>
+      <button id="pdfRetenciones">Exportar Retenciones PDF</button>
+    </section>
+
+    <!-- === Deducciones a Proveedores === -->
+    <section id="deducciones" class="tab hidden">
+      <h2>Deducciones a Proveedores</h2>
+      <div id="tablaDeducciones"></div>
+      <button id="pdfDeducciones">Exportar Deducciones PDF</button>
+    </section>
+
+    <!-- === Pagos a Choferes === -->
+    <section id="pagos" class="tab hidden">
+      <h2>Pagos a Choferes</h2>
+      <div id="tablaPagos"></div>
+      <button id="pdfPagos">Exportar Pagos PDF</button>
     </section>
 
     <!-- === Flujo de Caja === -->
@@ -123,6 +142,7 @@
         <button id="backupAll">Backup General</button>
       </div>
     </section>
+
   </main>
 
   <script src="app.js"></script>
