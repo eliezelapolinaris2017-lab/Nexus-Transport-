@@ -34,6 +34,26 @@
     <button data-tab="config">Configuración</button>
   </nav>
 
+  <!-- ===== FILTROS GLOBALES (aplican a Millas/Cierre/Retenciones/Deducciones/Pagos/Flujo) ===== -->
+  <section class="globalFilters" id="globalFilters">
+    <div class="gf">
+      <label>Desde</label>
+      <input type="date" id="fDesde">
+    </div>
+    <div class="gf">
+      <label>Hasta</label>
+      <input type="date" id="fHasta">
+    </div>
+    <div class="gf">
+      <label>Buscar</label>
+      <input type="text" id="fBuscar" placeholder="Chofer o Proveedor">
+    </div>
+    <div class="gf gfBtns">
+      <button id="fAplicar" type="button">Aplicar</button>
+      <button id="fLimpiar" type="button">Limpiar</button>
+    </div>
+  </section>
+
   <!-- ===== CONTENIDO PRINCIPAL ===== -->
   <main>
 
@@ -72,10 +92,13 @@
       <div class="filters">
         <select id="filtroChofer"><option value="">Filtrar por Chofer</option></select>
         <select id="filtroProveedor"><option value="">Filtrar por Proveedor</option></select>
-        <button id="btnMostrarTodo">Mostrar Todo</button>
+        <button id="btnMostrarTodo" type="button">Mostrar Todo</button>
       </div>
 
       <form id="formMillas">
+        <!-- NUEVO: Fecha del servicio (clave para filtros desde/hasta) -->
+        <input id="mFecha" type="date" required />
+
         <select id="mChofer" required><option value="">Seleccionar Chofer</option></select>
         <select id="mProveedor" required><option value="">Seleccionar Proveedor</option></select>
         <input id="mMillas" type="number" placeholder="Millas recorridas" required />
@@ -89,28 +112,28 @@
     <section id="cierres" class="tab hidden">
       <h2>Cierre Semanal</h2>
       <div id="tablaCierres"></div>
-      <button id="pdfCierre">Exportar Cierre PDF</button>
+      <button id="pdfCierre" type="button">Exportar Cierre PDF</button>
     </section>
 
     <!-- === Retenciones 10% === -->
     <section id="retenciones" class="tab hidden">
       <h2>Retenciones 10% por Chofer</h2>
       <div id="tablaRetenciones"></div>
-      <button id="pdfRetenciones">Exportar Retenciones PDF</button>
+      <button id="pdfRetenciones" type="button">Exportar Retenciones PDF</button>
     </section>
 
     <!-- === Deducciones a Proveedores === -->
     <section id="deducciones" class="tab hidden">
       <h2>Deducciones a Proveedores</h2>
       <div id="tablaDeducciones"></div>
-      <button id="pdfDeducciones">Exportar Deducciones PDF</button>
+      <button id="pdfDeducciones" type="button">Exportar Deducciones PDF</button>
     </section>
 
     <!-- === Pagos a Choferes === -->
     <section id="pagos" class="tab hidden">
       <h2>Pagos a Choferes</h2>
       <div id="tablaPagos"></div>
-      <button id="pdfPagos">Exportar Pagos PDF</button>
+      <button id="pdfPagos" type="button">Exportar Pagos PDF</button>
     </section>
 
     <!-- === Flujo de Caja === -->
@@ -138,8 +161,8 @@
         <label>Umbral Medio ($):</label>
         <input id="umbralMedio" type="number" step="0.01" placeholder="400" />
 
-        <button id="saveConfig">Guardar Configuración</button>
-        <button id="backupAll">Backup General</button>
+        <button id="saveConfig" type="button">Guardar Configuración</button>
+        <button id="backupAll" type="button">Backup General</button>
       </div>
     </section>
 
