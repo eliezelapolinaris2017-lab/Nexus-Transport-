@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDGoSNKi1wapE1SpHxTc8wNZGGkJ2nQj7s",
@@ -11,16 +12,36 @@ const firebaseConfig = {
 };
 
 let firebaseReady = false;
+let firebaseAuthReady = false;
 let db = null;
+let auth = null;
+let authReadyPromise = Promise.resolve(false);
+
 try {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
-  firebaseReady = true;
+  auth = getAuth(app);
+
+  // Autenticación anónima: evita el bloqueo de Firestore cuando las reglas requieren request.auth != null.
+  authReadyPromise = signInAnonymously(auth)
+    .then(() => {
+      firebaseReady = true;
+      firebaseAuthReady = true;
+      setTimeout(() => setSync("Firebase autenticado"), 0);
+      return true;
+    })
+    .catch((err) => {
+      firebaseReady = false;
+      firebaseAuthReady = false;
+      console.warn("Firebase Auth bloqueado. Activa Anonymous en Authentication > Sign-in method.", err);
+      setTimeout(() => setSync("Firebase Auth pendiente"), 0);
+      return false;
+    });
 } catch (err) {
   console.warn("Firebase no inició. Modo local activo.", err);
 }
 
-const KEY = "nexus_transport_pr_square_v4";
+const KEY = "nexus_transport_pr_soft_v5";
 const CLOUD_PATH = ["transport_state", "main"];
 const $ = (id) => document.getElementById(id);
 const money = (n) => Number(n || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -50,8 +71,14 @@ async function save(syncCloud = true) {
 }
 function setSync(text) { if ($("syncStatus")) $("syncStatus").textContent = text; }
 
+async function ensureFirebase() {
+  if (!db) return false;
+  const ok = await authReadyPromise;
+  return !!(ok && firebaseReady && firebaseAuthReady && auth?.currentUser);
+}
+
 async function pullCloud() {
-  if (!firebaseReady || !db) return setSync("Firebase no disponible");
+  if (!(await ensureFirebase())) return setSync("Firebase no disponible / Auth pendiente");
   try {
     setSync("Leyendo nube...");
     const snap = await getDoc(doc(db, ...CLOUD_PATH));
@@ -70,7 +97,7 @@ async function pullCloud() {
   }
 }
 async function pushCloud(show = true) {
-  if (!firebaseReady || !db) return;
+  if (!(await ensureFirebase())) return setSync("Solo local / Auth pendiente");
   try {
     if (show) setSync("Subiendo...");
     await setDoc(doc(db, ...CLOUD_PATH), { payload: state, updatedAt: serverTimestamp() }, { merge: true });
@@ -227,5 +254,5 @@ function exportJson(){ download(new Blob([JSON.stringify(state,null,2)],{type:"a
 function importJson(e){ const f=e.target.files?.[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{ try{ state={...defaultState(),...JSON.parse(r.result)}; save(); alert("Backup importado."); }catch{ alert("JSON inválido."); } }; r.readAsText(f); }
 function download(blob,name){ const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
 
-function boot(){ srvFecha.value=today(); bindEvents(); renderAll(); setSync(firebaseReady?"Firebase listo":"Solo local"); pullCloud(); }
+function boot(){ srvFecha.value=today(); bindEvents(); renderAll(); setSync("Conectando Firebase..."); pullCloud(); }
 boot();

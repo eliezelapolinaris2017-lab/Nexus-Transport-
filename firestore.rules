@@ -1,0 +1,35 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Documento principal usado por la app web estática.
+    match /transport_state/{docId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Colecciones preparadas por si luego separas los módulos.
+    match /settings/{docId} { allow read, write: if isSignedIn(); }
+    match /clients/{docId} { allow read, write: if isSignedIn(); }
+    match /services/{docId} { allow read, write: if isSignedIn(); }
+    match /drivers/{docId} { allow read, write: if isSignedIn(); }
+    match /providers/{docId} { allow read, write: if isSignedIn(); }
+    match /fleet/{docId} { allow read, write: if isSignedIn(); }
+    match /routes/{docId} { allow read, write: if isSignedIn(); }
+    match /invoices/{docId} { allow read, write: if isSignedIn(); }
+    match /payments/{docId} { allow read, write: if isSignedIn(); }
+    match /retentions/{docId} { allow read, write: if isSignedIn(); }
+    match /deductions/{docId} { allow read, write: if isSignedIn(); }
+    match /cashflow/{docId} { allow read, write: if isSignedIn(); }
+    match /evidence/{docId} { allow read, write: if isSignedIn(); }
+    match /reports/{docId} { allow read, write: if isSignedIn(); }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
