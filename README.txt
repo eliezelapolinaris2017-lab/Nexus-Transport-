@@ -1,17 +1,25 @@
-Puerto Rico Transport PRO
+PUERTO RICO TRANSPORT ULTRA V2
 
-Archivos:
-- index.html
-- styles.css
-- app.js
-
-Uso:
-1. Sube los 3 archivos a GitHub Pages o cualquier hosting estático.
-2. Abre index.html.
-3. Configura el nombre, tarifa por milla y logo.
-4. Crea clientes, choferes, proveedores, flota y servicios.
+Incluye:
+- Dashboard Ejecutivo
+- Clientes
+- Servicios / Ordenes
+- Choferes
+- Proveedores
+- Flota
+- GPS y Rutas con Google Maps
+- Facturacion
+- Cobros y metodos de pago
+- Pagos a choferes
+- Retenciones
+- Deducciones a proveedores
+- Flujo de caja
+- Reportes PDF
+- Documentos y evidencias
+- Configuracion
+- Backup JSON / Importacion / CSV
 
 Notas:
-- Guarda datos en LocalStorage del navegador.
-- Incluye backup/importación JSON para mover datos entre dispositivos.
-- Para sincronización real multiusuario, migrar a Firebase/Firestore.
+- Funciona sin backend usando localStorage.
+- Para uso multi-dispositivo real se recomienda Firebase Firestore + Firebase Storage.
+- Los mapas abren Google Maps y tambien muestran vista embebida para ruta estimada.

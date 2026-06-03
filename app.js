@@ -1,172 +1,101 @@
 (() => {
-  const KEY = "prt_pro_v1";
+  const KEY = "prt_pro_max_v1";
   const $ = (id) => document.getElementById(id);
-  const uid = (p="id") => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
+  const qs = (s) => document.querySelector(s);
+  const qsa = (s) => [...document.querySelectorAll(s)];
   const today = () => new Date().toISOString().slice(0,10);
-  const money = n => `$${(Number(n)||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}`;
-  const num = v => Number(v)||0;
-  const esc = s => String(s ?? "").replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+  const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+  const num = (v) => Number(v || 0);
+  const money = (v) => num(v).toLocaleString("en-US", { style:"currency", currency:"USD" });
+  const esc = (v) => String(v ?? "").replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));
   const base = {
-    cfg:{name:"Puerto Rico Transport PRO", phone:"", email:"", address:"Puerto Rico", rate:1.75, tax:0, logo:""},
-    clientes:[], choferes:[], proveedores:[], vehiculos:[], servicios:[]
+    cfg:{ name:"Puerto Rico Transport PRO Max", phone:"", email:"", address:"Puerto Rico", rate:2.5, tax:0, logo:"" },
+    clientes:[{id:"c1",nombre:"Cliente General",telefono:"",email:"",municipio:"San Juan",direccion:"",notas:""}],
+    choferes:[{id:"d1",nombre:"Chofer Principal",telefono:"",ganancia:50,retencion:10,licencia:"",expira:"",estado:"Activo"}],
+    proveedores:[{id:"p1",nombre:"Proveedor General",deduccion:0,telefono:"",email:"",estado:"Activo"}],
+    vehiculos:[{id:"v1",unidad:"Unidad 1",tablilla:"",marca:"",modelo:"",ano:"",vin:"",mantenimiento:"",marbete:"",estado:"Activo"}],
+    servicios:[], facturas:[], cobros:[], pagosChoferes:[], pagosRetenciones:[], pagosProveedores:[], evidencias:[]
   };
   let state = load();
-  let filters = {desde:"", hasta:"", buscar:"", estado:""};
-
-  function load(){ try { return {...base, ...JSON.parse(localStorage.getItem(KEY)||"{}")} } catch { return structuredClone(base); } }
+  function load(){ try { return merge(structuredClone(base), JSON.parse(localStorage.getItem(KEY) || "{}")); } catch { return structuredClone(base); } }
+  function merge(a,b){ for(const k in b){ if(b[k] && typeof b[k]==="object" && !Array.isArray(b[k])) a[k]=merge(a[k]||{},b[k]); else a[k]=b[k]; } return a; }
   function save(){ localStorage.setItem(KEY, JSON.stringify(state)); renderAll(); }
-  function activeServices(){ return state.servicios.filter(s=>s.estado!=="Cancelado"); }
-  function total(s){ return num(s.base)+num(s.millas)*num(state.cfg.rate)+num(s.peajes); }
-  function balance(s){ return Math.max(0,total(s)-num(s.pagado)); }
-  function profit(s){ return total(s)-num(s.gastos); }
-  function byId(arr,id){ return arr.find(x=>x.id===id); }
-  function nameOf(arr,id,fallback="—"){ return byId(arr,id)?.nombre || byId(arr,id)?.unidad || fallback; }
-  function filteredServices(){
-    let rows = [...state.servicios];
-    if(filters.desde) rows = rows.filter(s=>String(s.fecha)>=filters.desde);
-    if(filters.hasta) rows = rows.filter(s=>String(s.fecha)<=filters.hasta);
-    if(filters.estado) rows = rows.filter(s=>s.estado===filters.estado);
-    const q = filters.buscar.trim().toLowerCase();
-    if(q) rows = rows.filter(s => [s.numero,s.telefono,s.origen,s.destino,s.tipo,s.notas,s.estado,nameOf(state.clientes,s.clienteId,""),nameOf(state.choferes,s.choferId,""),nameOf(state.proveedores,s.proveedorId,"")].join(" ").toLowerCase().includes(q));
-    return rows.sort((a,b)=>String(b.fecha+b.hora).localeCompare(String(a.fecha+a.hora)));
-  }
-
+  function byId(arr,id){ return (arr||[]).find(x=>x.id===id); }
+  function nameOf(arr,id,fb="—"){ return byId(arr,id)?.nombre || byId(arr,id)?.unidad || fb; }
+  function serviceTotal(s){ return num(s.base) + num(s.peajes); }
+  function servicePaid(s){ return num(s.pagado) + state.cobros.filter(c=>c.servicioId===s.id).reduce((a,c)=>a+num(c.monto),0); }
+  function serviceBalance(s){ return Math.max(0, serviceTotal(s) - servicePaid(s)); }
+  function driverGross(s){ const d=byId(state.choferes,s.choferId); return serviceTotal(s) * num(d?.ganancia) / 100; }
+  function driverRetention(s){ const d=byId(state.choferes,s.choferId); return driverGross(s) * num(d?.retencion) / 100; }
+  function driverNet(s){ return driverGross(s) - driverRetention(s); }
+  function providerDeduction(s){ const p=byId(state.proveedores,s.proveedorId); return serviceTotal(s) * num(p?.deduccion) / 100; }
+  function inPeriod(arr){ const f=filt(); return (arr||[]).filter(x=>(!f.desde||x.fecha>=f.desde)&&(!f.hasta||x.fecha<=f.hasta)); }
+  function filt(){ return {desde:$('fDesde')?.value||'', hasta:$('fHasta')?.value||'', q:($('fBuscar')?.value||'').toLowerCase(), estado:$('fEstado')?.value||''}; }
+  function filteredServices(){ const f=filt(); return state.servicios.filter(s=> (!f.desde||s.fecha>=f.desde)&&(!f.hasta||s.fecha<=f.hasta)&&(!f.estado||s.estado===f.estado)&&(!f.q||[s.numero,s.telefono,s.origen,s.destino,s.tipo,s.estado,nameOf(state.clientes,s.clienteId,''),nameOf(state.choferes,s.choferId,''),nameOf(state.proveedores,s.proveedorId,'')].join(' ').toLowerCase().includes(f.q))).sort((a,b)=>String(b.fecha).localeCompare(a.fecha)); }
   function init(){
-    $("srvFecha").value = today();
-    bindTabs(); bindFilters(); bindForms(); loadConfigUI(); renderAll();
-    if(!state.clientes.length && !state.choferes.length && !state.proveedores.length) seedHint();
+    qsa('[data-tab]').forEach(b=>b.onclick=()=>openTab(b.dataset.tab)); qsa('[data-open]').forEach(b=>b.onclick=()=>openTab(b.dataset.open));
+    $('btnApplyFilters').onclick=renderAll; $('btnClearFilters').onclick=()=>{['fDesde','fHasta','fBuscar','fEstado'].forEach(id=>$(id).value=''); renderAll();};
+    bindButtons(); ['srvFecha','payDate','payDriverDate','payDriverDate2','retPayDate','provPayDate'].forEach(id=>{ if($(id) && !$(id).value) $(id).value=today(); });
+    loadConfigUI(); renderAll();
   }
-  function seedHint(){ console.info("Puerto Rico Transport PRO listo. Añade clientes, choferes y servicios."); }
-
-  function bindTabs(){
-    document.querySelectorAll("[data-tab]").forEach(btn=>btn.onclick=()=>openTab(btn.dataset.tab));
-    document.querySelectorAll("[data-open]").forEach(btn=>btn.onclick=()=>openTab(btn.dataset.open));
+  function bindButtons(){
+    $('btnSaveClient').onclick=saveClient; $('btnSaveDriver').onclick=saveDriver; $('btnSaveProvider').onclick=saveProvider; $('btnSaveVehicle').onclick=saveVehicle; $('btnSaveService').onclick=saveService;
+    $('btnCalcRoute').onclick=calcServiceRate; $('btnOpenRoute').onclick=()=>openMaps($('srvOrigen').value,$('srvDestino').value); $('btnRouteMaps').onclick=()=>openMaps($('routeFrom').value,$('routeTo').value); $('btnRouteQuote').onclick=routeQuote;
+    $('btnSaveInvoice').onclick=saveInvoice; $('btnSaveCustomerPayment').onclick=saveCustomerPayment; $('btnSaveDriverPayment').onclick=saveDriverPayment; if($('btnSaveDriverPayment2')) $('btnSaveDriverPayment2').onclick=saveDriverPayment2; $('btnSaveRetentionPayment').onclick=saveRetentionPayment; $('btnSaveProviderPayment').onclick=saveProviderPayment; $('btnSaveEvidence').onclick=saveEvidence;
+    $('btnSaveConfig').onclick=saveConfig; $('cfgLogo').onchange=readLogo; if($('evFile')) $('evFile').onchange=previewEvidenceFile;
+    ['pdfExecutive','btnQuickPdf'].forEach(id=>$(id).onclick=pdfExecutive); $('pdfServices').onclick=pdfServices; $('pdfSettlementReport').onclick=pdfSettlement; $('btnPdfSettlement') && ($('btnPdfSettlement').onclick=pdfSettlement); $('btnPdfRetention').onclick=pdfRetention; $('btnPdfDeductions').onclick=pdfDeductions; $('btnRoutePDF').onclick=pdfRoutes; $('btnInvoicePDF').onclick=pdfInvoice; $('btnReceiptPDF').onclick=pdfReceipt;
+    $('exportCsv').onclick=exportCsv; $('backupJson').onclick=backupJson; $('importJson').onchange=importJson; if($('btnPdfDriverPayments')) $('btnPdfDriverPayments').onclick=pdfSettlement;
   }
-  function openTab(id){
-    document.querySelectorAll(".tabView").forEach(v=>v.classList.add("hidden"));
-    $(id)?.classList.remove("hidden");
-    document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("active",b.dataset.tab===id));
-    renderAll();
-  }
-  function bindFilters(){
-    $("btnApplyFilters").onclick = ()=>{ filters={desde:$("fDesde").value,hasta:$("fHasta").value,buscar:$("fBuscar").value,estado:$("fEstado").value}; renderAll(); };
-    $("btnClearFilters").onclick = ()=>{ filters={desde:"",hasta:"",buscar:"",estado:""}; ["fDesde","fHasta","fBuscar","fEstado"].forEach(id=>$(id).value=""); renderAll(); };
-  }
-  function bindForms(){
-    $("btnSaveClient").onclick=saveClient; $("btnSaveDriver").onclick=saveDriver; $("btnSaveProvider").onclick=saveProvider; $("btnSaveVehicle").onclick=saveVehicle; $("btnSaveService").onclick=saveService; $("btnSaveConfig").onclick=saveConfig;
-    $("pdfExecutive").onclick=()=>pdfExecutive(); $("btnQuickPdf").onclick=()=>pdfExecutive(); $("pdfServices").onclick=()=>pdfServices(); $("exportCsv").onclick=exportCsv; $("backupJson").onclick=backupJson;
-    $("importJson").onchange=importJson; $("cfgLogo").onchange=readLogo;
-  }
-
-  function saveClient(){
-    if(!$("cliNombre").value.trim()) return alert("Nombre requerido");
-    upsert("clientes", {id:$("cliId").value||uid("cli"), nombre:$("cliNombre").value.trim(), telefono:$("cliTelefono").value, email:$("cliEmail").value, municipio:$("cliMunicipio").value, direccion:$("cliDireccion").value, notas:$("cliNotas").value});
-    formCliente.reset(); $("cliId").value=""; save();
-  }
-  function saveDriver(){
-    if(!$("drvNombre").value.trim()) return alert("Nombre requerido");
-    upsert("choferes", {id:$("drvId").value||uid("drv"), nombre:$("drvNombre").value.trim(), telefono:$("drvTelefono").value, ganancia:num($("drvGanancia").value), retencion:num($("drvRetencion").value), licencia:$("drvLicencia").value, expira:$("drvExpira").value, estado:$("drvEstado").value});
-    formChofer.reset(); $("drvGanancia").value=50; $("drvRetencion").value=10; $("drvId").value=""; save();
-  }
-  function saveProvider(){
-    if(!$("proNombre").value.trim()) return alert("Nombre requerido");
-    upsert("proveedores", {id:$("proId").value||uid("pro"), nombre:$("proNombre").value.trim(), deduccion:num($("proDeduccion").value), telefono:$("proTelefono").value, email:$("proEmail").value, estado:$("proEstado").value});
-    formProveedor.reset(); $("proDeduccion").value=0; $("proId").value=""; save();
-  }
-  function saveVehicle(){
-    if(!$("vehUnidad").value.trim()) return alert("Unidad requerida");
-    upsert("vehiculos", {id:$("vehId").value||uid("veh"), unidad:$("vehUnidad").value.trim(), tablilla:$("vehTablilla").value, marca:$("vehMarca").value, modelo:$("vehModelo").value, ano:$("vehAno").value, vin:$("vehVin").value, mantenimiento:$("vehMantenimiento").value, marbete:$("vehMarbete").value, estado:$("vehEstado").value});
-    formVehiculo.reset(); $("vehId").value=""; save();
-  }
-  function saveService(){
-    if(!$("srvFecha").value || !$("srvCliente").value || !$("srvChofer").value) return alert("Fecha, cliente y chofer son requeridos");
-    const id = $("srvId").value || uid("srv");
-    upsert("servicios", {id, fecha:$("srvFecha").value, hora:$("srvHora").value, numero:$("srvNumero").value || nextServiceNo(), clienteId:$("srvCliente").value, telefono:$("srvTelefono").value, origen:$("srvOrigen").value, destino:$("srvDestino").value, tipo:$("srvTipo").value, choferId:$("srvChofer").value, proveedorId:$("srvProveedor").value, vehiculoId:$("srvVehiculo").value, millas:num($("srvMillas").value), base:num($("srvBase").value), peajes:num($("srvPeajes").value), gastos:num($("srvGastos").value), pagado:num($("srvPagado").value), estado:$("srvEstado").value, notas:$("srvNotas").value, updatedAt:new Date().toISOString()});
-    formServicio.reset(); $("srvFecha").value=today(); $("srvId").value=""; save();
-  }
-  function upsert(key,obj){ const i=state[key].findIndex(x=>x.id===obj.id); i>=0 ? state[key][i]=obj : state[key].push(obj); }
-  function nextServiceNo(){ return `PRT-${String(state.servicios.length+1).padStart(5,"0")}`; }
-  function remove(key,id){ if(confirm("¿Borrar registro?")){ state[key]=state[key].filter(x=>x.id!==id); save(); } }
-
-  function renderAll(){ renderBrand(); renderSelects(); renderDashboard(); renderTables(); renderFinance(); }
-  function renderBrand(){
-    $("brandName").textContent=state.cfg.name||"Puerto Rico Transport PRO";
-    if(state.cfg.logo) $("brandLogo").innerHTML=`<img src="${state.cfg.logo}" alt="Logo">`; else $("brandLogo").textContent=(state.cfg.name||"PR").split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  }
-  function opt(arr, label="Seleccionar"){ return `<option value="">${label}</option>` + arr.filter(x=>x.estado!=="Inactivo").map(x=>`<option value="${x.id}">${esc(x.nombre||x.unidad)}</option>`).join(""); }
-  function renderSelects(){
-    $("srvCliente").innerHTML=opt(state.clientes,"Seleccionar cliente"); $("srvChofer").innerHTML=opt(state.choferes,"Seleccionar chofer"); $("srvProveedor").innerHTML=opt(state.proveedores,"Sin proveedor"); $("srvVehiculo").innerHTML=opt(state.vehiculos,"Sin vehículo asignado");
-  }
-  function renderDashboard(){
-    const rows=filteredServices(), all=activeServices();
-    const fact=rows.reduce((a,s)=>a+total(s),0), paid=rows.reduce((a,s)=>a+num(s.pagado),0), bal=rows.reduce((a,s)=>a+balance(s),0), net=rows.reduce((a,s)=>a+profit(s),0);
-    $("heroBalance").textContent=money(activeServices().reduce((a,s)=>a+balance(s),0)); $("heroServices").textContent=`${all.length} servicios activos`;
-    $("kpiGrid").innerHTML=[
-      ["Facturado",money(fact),`${rows.length} servicios filtrados`],["Cobrado",money(paid),"cash-in real"],["Pendiente",money(bal),"cuentas por cobrar"],["Ganancia neta",money(net),"antes de retenciones"]
-    ].map(k=>`<div class="kpi"><span>${k[0]}</span><strong>${k[1]}</strong><small>${k[2]}</small></div>`).join("");
-    table($("tblRecent"), ["Fecha","Servicio","Cliente","Ruta","Estado","Total"], rows.slice(0,8).map(s=>[s.fecha, s.numero, nameOf(state.clientes,s.clienteId), `${esc(s.origen)} → ${esc(s.destino)}`, status(s.estado), money(total(s))]));
-    renderTop(rows);
-  }
-  function renderTop(rows){
-    const drivers={}; rows.forEach(s=>{ const n=nameOf(state.choferes,s.choferId,"Sin chofer"); drivers[n]=(drivers[n]||0)+total(s); });
-    const items=Object.entries(drivers).sort((a,b)=>b[1]-a[1]).slice(0,6);
-    $("topPerformance").innerHTML=items.length?items.map(([n,v])=>`<div class="listItem"><strong>${esc(n)}</strong><span>${money(v)}</span></div>`).join(""):`<div class="empty">Sin desempeño registrado.</div>`;
-  }
-  function status(s){ const c=s==="Cobrado"?"ok":s==="Pendiente"?"warn":s==="Cancelado"?"bad":""; return `<span class="pill ${c}">${esc(s)}</span>`; }
-  function table(el, heads, rows){ el.innerHTML = `<tr>${heads.map(h=>`<th>${h}</th>`).join("")}</tr>` + (rows.length? rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join("") : `<tr><td colspan="${heads.length}"><div class="empty">Sin datos.</div></td></tr>`); }
-  function actions(key,id){ return `<div class="rowBtns"><button class="mini" data-edit="${key}:${id}">Editar</button><button class="mini danger" data-del="${key}:${id}">Borrar</button></div>`; }
-  function renderTables(){
-    const sr=filteredServices();
-    table($("tblServicios"),["Fecha","No.","Cliente","Ruta","Chofer","Total","Pagado","Balance","Estado","Acción"], sr.map(s=>[s.fecha,s.numero,nameOf(state.clientes,s.clienteId),`${esc(s.origen)} → ${esc(s.destino)}`,nameOf(state.choferes,s.choferId),money(total(s)),money(s.pagado),money(balance(s)),status(s.estado),actions("servicios",s.id)]));
-    table($("tblClientes"),["Cliente","Teléfono","Municipio","Total facturado","Balance","Acción"], state.clientes.map(c=>{const ss=state.servicios.filter(s=>s.clienteId===c.id);return [esc(c.nombre),esc(c.telefono),esc(c.municipio),money(ss.reduce((a,s)=>a+total(s),0)),money(ss.reduce((a,s)=>a+balance(s),0)),actions("clientes",c.id)]}));
-    table($("tblChoferes"),["Chofer","Teléfono","Ganancia","Retención","Licencia","Expira","Estado","Acción"], state.choferes.map(d=>[esc(d.nombre),esc(d.telefono),`${num(d.ganancia)}%`,`${num(d.retencion)}%`,esc(d.licencia),esc(d.expira),status(d.estado),actions("choferes",d.id)]));
-    table($("tblProveedores"),["Proveedor","Deducción","Teléfono","Email","Estado","Acción"], state.proveedores.map(p=>[esc(p.nombre),`${num(p.deduccion)}%`,esc(p.telefono),esc(p.email),status(p.estado),actions("proveedores",p.id)]));
-    table($("tblVehiculos"),["Unidad","Tablilla","Marca/Modelo","Año","Mantenimiento","Marbete","Estado","Acción"], state.vehiculos.map(v=>[esc(v.unidad),esc(v.tablilla),`${esc(v.marca)} ${esc(v.modelo)}`,esc(v.ano),esc(v.mantenimiento),esc(v.marbete),status(v.estado),actions("vehiculos",v.id)]));
-    document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.del.split(":"); remove(k,id)});
-    document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.edit.split(":"); edit(k,id)});
-  }
-  function renderFinance(){
-    const rows=filteredServices(); const fact=rows.reduce((a,s)=>a+total(s),0), gastos=rows.reduce((a,s)=>a+num(s.gastos),0), bal=rows.reduce((a,s)=>a+balance(s),0), net=fact-gastos;
-    $("financeKpis").innerHTML=[["Facturado",fact],["Gastos",gastos],["Balance pendiente",bal],["Neto operacional",net]].map(([a,b])=>`<div class="kpi"><span>${a}</span><strong>${money(b)}</strong></div>`).join("");
-    renderDriverPayments(rows); renderProviderDeductions(rows);
-    table($("tblCashflow"),["Concepto","Total"],[["Facturado",money(fact)],["Cobrado",money(rows.reduce((a,s)=>a+num(s.pagado),0))],["Gastos",money(gastos)],["Cuentas por cobrar",money(bal)],["Neto",money(net)]]);
-  }
-  function renderDriverPayments(rows){
-    const map={}; rows.forEach(s=>{const d=byId(state.choferes,s.choferId); if(!d)return; const bruto=profit(s)*num(d.ganancia)/100, ret=bruto*num(d.retencion)/100; map[d.nombre]??={bruto:0,ret:0,neto:0}; map[d.nombre].bruto+=bruto; map[d.nombre].ret+=ret; map[d.nombre].neto+=bruto-ret;});
-    $("driverPayments").innerHTML=Object.entries(map).map(([n,v])=>`<div class="listItem"><strong>${esc(n)}</strong><span>Bruto ${money(v.bruto)} · Ret. ${money(v.ret)} · Neto ${money(v.neto)}</span></div>`).join("")||`<div class="empty">Sin pagos calculados.</div>`;
-  }
-  function renderProviderDeductions(rows){
-    const map={}; rows.forEach(s=>{const p=byId(state.proveedores,s.proveedorId); if(!p)return; map[p.nombre]=(map[p.nombre]||0)+total(s)*num(p.deduccion)/100;});
-    $("providerDeductions").innerHTML=Object.entries(map).map(([n,v])=>`<div class="listItem"><strong>${esc(n)}</strong><span>${money(v)}</span></div>`).join("")||`<div class="empty">Sin deducciones.</div>`;
-  }
-  function edit(k,id){
-    const o=byId(state[k],id); if(!o)return;
-    const map={clientes:["cli",["Nombre","Telefono","Email","Municipio","Direccion","Notas"]],choferes:["drv",["Nombre","Telefono","Ganancia","Retencion","Licencia","Expira","Estado"]],proveedores:["pro",["Nombre","Deduccion","Telefono","Email","Estado"]],vehiculos:["veh",["Unidad","Tablilla","Marca","Modelo","Ano","Vin","Mantenimiento","Marbete","Estado"]]};
-    if(k==="servicios"){ openTab("servicios"); ["Id","Fecha","Hora","Numero","Telefono","Origen","Destino","Tipo","Millas","Base","Peajes","Gastos","Pagado","Estado","Notas"].forEach(n=>{const el=$("srv"+n); if(el) el.value=o[n.toLowerCase()]??""}); $("srvCliente").value=o.clienteId; $("srvChofer").value=o.choferId; $("srvProveedor").value=o.proveedorId; $("srvVehiculo").value=o.vehiculoId; return; }
-    const [pre,fields]=map[k]; openTab(k==="clientes"?"clientes":k==="choferes"?"choferes":k==="proveedores"?"proveedores":"flota"); $(pre+"Id").value=o.id; fields.forEach(F=>{ const key=F.toLowerCase(); const el=$(pre+F); if(el) el.value=o[key]??""; });
-  }
-
-  function loadConfigUI(){ [ ["cfgName","name"],["cfgPhone","phone"],["cfgEmail","email"],["cfgAddress","address"],["cfgRate","rate"],["cfgTax","tax"] ].forEach(([id,k])=>$(id).value=state.cfg[k]??""); }
-  function saveConfig(){ state.cfg={...state.cfg,name:cfgName.value,phone:cfgPhone.value,email:cfgEmail.value,address:cfgAddress.value,rate:num(cfgRate.value),tax:num(cfgTax.value)}; save(); }
-  function readLogo(e){ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{state.cfg.logo=r.result; save();}; r.readAsDataURL(f); }
-
-  function pdfBase(title){
-    const { jsPDF } = window.jspdf; const doc=new jsPDF({unit:"pt",format:"letter"}); const W=doc.internal.pageSize.getWidth();
-    doc.setFillColor(11,27,51); doc.rect(0,0,W,82,"F"); doc.setTextColor(255); doc.setFont("helvetica","bold"); doc.setFontSize(18); doc.text(state.cfg.name||"Puerto Rico Transport PRO",40,34); doc.setFontSize(11); doc.setFont("helvetica","normal"); doc.text(title,40,56);
-    if(state.cfg.logo){ try{ doc.addImage(state.cfg.logo, state.cfg.logo.startsWith("data:image/png")?"PNG":"JPEG", W-92,18,48,48); }catch{} }
-    doc.setTextColor(16,32,51); return doc;
-  }
-  function pdfExecutive(){
-    const doc=pdfBase("Reporte Ejecutivo"); const rows=filteredServices(); let y=116; const data=[["Servicios",rows.length],["Facturado",money(rows.reduce((a,s)=>a+total(s),0))],["Cobrado",money(rows.reduce((a,s)=>a+num(s.pagado),0))],["Balance pendiente",money(rows.reduce((a,s)=>a+balance(s),0))],["Ganancia neta",money(rows.reduce((a,s)=>a+profit(s),0))]];
-    doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.text("Resumen operacional",40,y); y+=24; doc.setFontSize(11); data.forEach(([a,b])=>{doc.setFont("helvetica","bold");doc.text(String(a),50,y);doc.setFont("helvetica","normal");doc.text(String(b),250,y);y+=22;});
-    y+=12; doc.setFont("helvetica","bold"); doc.text("Servicios recientes",40,y); y+=22; doc.setFont("helvetica","normal"); rows.slice(0,18).forEach(s=>{ if(y>720){doc.addPage();y=50;} doc.text(`${s.fecha}  ${s.numero}  ${nameOf(state.clientes,s.clienteId)}  ${money(total(s))}  ${s.estado}`,40,y); y+=18; });
-    doc.save(`Reporte_Ejecutivo_PRT_${today()}.pdf`);
-  }
-  function pdfServices(){ const doc=pdfBase("Listado de Servicios"); let y=116; filteredServices().forEach(s=>{ if(y>720){doc.addPage();y=50;} doc.setFont("helvetica","bold");doc.text(`${s.fecha} · ${s.numero} · ${nameOf(state.clientes,s.clienteId)}`,40,y); y+=15; doc.setFont("helvetica","normal");doc.text(`${s.origen} → ${s.destino} | ${nameOf(state.choferes,s.choferId)} | Total ${money(total(s))} | Balance ${money(balance(s))}`,40,y); y+=24; }); doc.save(`Servicios_PRT_${today()}.pdf`); }
-  function exportCsv(){ const head=["fecha","numero","cliente","telefono","origen","destino","tipo","chofer","proveedor","millas","base","peajes","gastos","pagado","total","balance","estado"]; const rows=filteredServices().map(s=>[s.fecha,s.numero,nameOf(state.clientes,s.clienteId),s.telefono,s.origen,s.destino,s.tipo,nameOf(state.choferes,s.choferId),nameOf(state.proveedores,s.proveedorId,""),s.millas,s.base,s.peajes,s.gastos,s.pagado,total(s),balance(s),s.estado]); download("servicios_prt.csv", [head,...rows].map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\n"), "text/csv"); }
-  function backupJson(){ download(`backup_prt_${today()}.json`, JSON.stringify(state,null,2), "application/json"); }
-  function importJson(e){ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{ try{ state={...base,...JSON.parse(r.result)}; save(); alert("Backup importado."); }catch{ alert("Archivo inválido."); } }; r.readAsText(f); }
-  function download(name,content,type){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
-
-  window.addEventListener("DOMContentLoaded", init);
+  function openTab(id){ qsa('.tabView').forEach(s=>s.classList.toggle('hidden',s.id!==id)); qsa('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===id)); renderAll(); }
+  function opt(el, arr, text='nombre'){ if(!el) return; el.innerHTML='<option value="">Seleccionar</option>'+arr.map(x=>`<option value="${x.id}">${esc(x[text]||x.nombre||x.unidad)}</option>`).join(''); }
+  function renderAll(){ renderBrand(); renderSelects(); renderDashboard(); renderTables(); renderFinance(); renderInvoices(); renderCobros(); renderEvidence(); }
+  function renderBrand(){ $('brandName').textContent=state.cfg.name||'Puerto Rico Transport PRO Max'; $('brandLogo').innerHTML=state.cfg.logo?`<img src="${state.cfg.logo}">`:'PR'; }
+  function renderSelects(){ ['srvCliente'].forEach(id=>opt($(id),state.clientes)); ['srvChofer','payDriverId','payDriverId2','retPayDriverId'].forEach(id=>opt($(id),state.choferes)); ['srvProveedor','provPayId'].forEach(id=>opt($(id),state.proveedores)); ['srvVehiculo'].forEach(id=>opt($(id),state.vehiculos,'unidad')); ['payService','invService','evService'].forEach(id=>opt($(id),state.servicios.map(s=>({...s,nombre:`${s.numero} · ${nameOf(state.clientes,s.clienteId)} · ${money(serviceBalance(s))}`})))); }
+  function status(s){ const c=s==='Cobrado'||s==='Pagada'||s==='Activo'?'ok':s==='Pendiente'||s==='Parcial'?'warn':s==='Cancelado'||s==='Inactivo'?'bad':''; return `<span class="pill ${c}">${esc(s)}</span>`; }
+  function table(el, heads, rows){ if(!el) return; el.innerHTML=`<tr>${heads.map(h=>`<th>${h}</th>`).join('')}</tr>`+(rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${heads.length}"><div class="empty">Sin datos.</div></td></tr>`); }
+  function actions(k,id){ return `<div class="rowBtns"><button class="mini" data-edit="${k}:${id}">Editar</button><button class="mini danger" data-del="${k}:${id}">Borrar</button></div>`; }
+  function wireActions(){ qsa('[data-del]').forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.del.split(':'); if(confirm('¿Borrar registro?')){state[k]=state[k].filter(x=>x.id!==id); save();}}); qsa('[data-edit]').forEach(b=>b.onclick=()=>edit(...b.dataset.edit.split(':'))); }
+  function renderDashboard(){ const rows=filteredServices(); const fact=rows.reduce((a,s)=>a+serviceTotal(s),0), cob=rows.reduce((a,s)=>a+servicePaid(s),0), bal=rows.reduce((a,s)=>a+serviceBalance(s),0), miles=rows.reduce((a,s)=>a+num(s.millas),0); $('heroBalance').textContent=money(bal); $('heroServices').textContent=`${rows.length} servicios activos`; $('kpiGrid').innerHTML=[['Facturado',fact],['Cobrado',cob],['Por cobrar',bal],['Servicios',rows.length],['Millas',miles],['Neto antes pagos',fact-rows.reduce((a,s)=>a+num(s.gastos),0)]].map(([a,b])=>`<div class="kpi"><span>${a}</span><strong>${typeof b==='number'&&a!=='Servicios'&&a!=='Millas'?money(b):b}</strong></div>`).join(''); table($('tblRecent'),['Fecha','No.','Cliente','Ruta','Total','Estado'],rows.slice(0,8).map(s=>[s.fecha,s.numero,nameOf(state.clientes,s.clienteId),`${esc(s.origen)} → ${esc(s.destino)}`,money(serviceTotal(s)),status(s.estado)])); const top={}; rows.forEach(s=>top[nameOf(state.choferes,s.choferId,'Sin chofer')]=(top[nameOf(state.choferes,s.choferId,'Sin chofer')]||0)+serviceTotal(s)); $('topPerformance').innerHTML=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,v])=>`<div class="listItem"><strong>${esc(n)}</strong><span>${money(v)}</span></div>`).join('')||'<div class="empty">Sin desempeño.</div>'; }
+  function renderTables(){ const sr=filteredServices(); table($('tblServicios'),['Fecha','No.','Cliente','Ruta','Chofer','Millas','Total','Cobrado','Balance','Estado','Acción'],sr.map(s=>[s.fecha,s.numero,nameOf(state.clientes,s.clienteId),`${esc(s.origen)} → ${esc(s.destino)}`,nameOf(state.choferes,s.choferId),num(s.millas),money(serviceTotal(s)),money(servicePaid(s)),money(serviceBalance(s)),status(s.estado),actions('servicios',s.id)])); table($('tblClientes'),['Cliente','Teléfono','Municipio','Facturado','Balance','Acción'],state.clientes.map(c=>{const ss=state.servicios.filter(s=>s.clienteId===c.id);return[esc(c.nombre),esc(c.telefono),esc(c.municipio),money(ss.reduce((a,s)=>a+serviceTotal(s),0)),money(ss.reduce((a,s)=>a+serviceBalance(s),0)),actions('clientes',c.id)]})); table($('tblChoferes'),['Chofer','Teléfono','Ganancia','Retención','Licencia','Expira','Estado','Acción'],state.choferes.map(d=>[esc(d.nombre),esc(d.telefono),`${num(d.ganancia)}%`,`${num(d.retencion)}%`,esc(d.licencia),esc(d.expira),status(d.estado),actions('choferes',d.id)])); table($('tblProveedores'),['Proveedor','Deducción','Teléfono','Email','Estado','Acción'],state.proveedores.map(p=>[esc(p.nombre),`${num(p.deduccion)}%`,esc(p.telefono),esc(p.email),status(p.estado),actions('proveedores',p.id)])); table($('tblVehiculos'),['Unidad','Tablilla','Marca/Modelo','Año','Mantenimiento','Marbete','Estado','Acción'],state.vehiculos.map(v=>[esc(v.unidad),esc(v.tablilla),`${esc(v.marca)} ${esc(v.modelo)}`,esc(v.ano),esc(v.mantenimiento),esc(v.marbete),status(v.estado),actions('vehiculos',v.id)])); table($('tblRutas'),['Fecha','Servicio','Origen','Destino','Millas','Mapa'],sr.map(s=>[s.fecha,s.numero,esc(s.origen),esc(s.destino),num(s.millas),`<button class="mini" onclick="window.open('https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.origen)}&destination=${encodeURIComponent(s.destino)}','_blank')">Abrir</button>`])); renderSettlements(); wireActions(); }
+  function settlementRows(){ const rows=filteredServices(), pd=inPeriod(state.pagosChoferes), pr=inPeriod(state.pagosRetenciones); return state.choferes.map(d=>{ const ss=rows.filter(s=>s.choferId===d.id); const bruto=ss.reduce((a,s)=>a+driverGross(s),0), ret=ss.reduce((a,s)=>a+driverRetention(s),0), neto=bruto-ret, pag=pd.filter(p=>p.choferId===d.id).reduce((a,p)=>a+num(p.monto),0), rpag=pr.filter(p=>p.choferId===d.id).reduce((a,p)=>a+num(p.monto),0); return {id:d.id,nombre:d.nombre,servicios:ss.length,bruto,ret,neto,pag,rpag,balance:neto-pag,retPend:ret-rpag}; }).filter(r=>r.servicios||r.pag||r.rpag); }
+  function providerRows(){ const rows=filteredServices(), pp=inPeriod(state.pagosProveedores); return state.proveedores.map(p=>{ const ss=rows.filter(s=>s.proveedorId===p.id), ded=ss.reduce((a,s)=>a+providerDeduction(s),0), pag=pp.filter(x=>x.proveedorId===p.id).reduce((a,x)=>a+num(x.monto),0); return {id:p.id,nombre:p.nombre,ded,pag,balance:ded-pag}; }).filter(r=>r.ded||r.pag); }
+  function renderSettlements(){ const ds=settlementRows(); table($('tblDriverSettlement'),['Chofer','Servicios','Bruto','Retención','Neto','Pagado','Balance','Ret. Pagada','Ret. Pendiente'],ds.map(r=>[esc(r.nombre),r.servicios,money(r.bruto),money(r.ret),money(r.neto),money(r.pag),money(r.balance),money(r.rpag),money(r.retPend)])); table($('tblDriverPayHistory'),['Fecha','Chofer','Monto','Método','Ref.','Notas','Acción'],inPeriod(state.pagosChoferes).map(p=>[p.fecha,nameOf(state.choferes,p.choferId),money(p.monto),esc(p.metodo),esc(p.referencia),esc(p.notas),actions('pagosChoferes',p.id)])); table($('tblDriverPayHistory2'),['Fecha','Chofer','Monto','Método','Ref.','Notas','Acción'],inPeriod(state.pagosChoferes).map(p=>[p.fecha,nameOf(state.choferes,p.choferId),money(p.monto),esc(p.metodo),esc(p.referencia),esc(p.notas),actions('pagosChoferes',p.id)])); table($('tblDriverSettlement2'),['Chofer','Servicios','Bruto','Retención','Neto','Pagado','Balance','Ret. Pendiente'],ds.map(r=>[esc(r.nombre),r.servicios,money(r.bruto),money(r.ret),money(r.neto),money(r.pag),money(r.balance),money(r.retPend)])); table($('tblRetentionHistory'),['Fecha','Chofer','Monto','Método','Ref.','Notas','Acción'],inPeriod(state.pagosRetenciones).map(p=>[p.fecha,nameOf(state.choferes,p.choferId),money(p.monto),esc(p.metodo),esc(p.referencia),esc(p.notas),actions('pagosRetenciones',p.id)])); table($('tblProviderPayHistory'),['Fecha','Proveedor','Monto','Método','Ref.','Notas','Acción'],inPeriod(state.pagosProveedores).map(p=>[p.fecha,nameOf(state.proveedores,p.proveedorId),money(p.monto),esc(p.metodo),esc(p.referencia),esc(p.notas),actions('pagosProveedores',p.id)])); }
+  function renderFinance(){ const rows=filteredServices(), fact=rows.reduce((a,s)=>a+serviceTotal(s),0), cob=rows.reduce((a,s)=>a+servicePaid(s),0), gastos=rows.reduce((a,s)=>a+num(s.gastos),0), pch=inPeriod(state.pagosChoferes).reduce((a,p)=>a+num(p.monto),0), pret=inPeriod(state.pagosRetenciones).reduce((a,p)=>a+num(p.monto),0), pprov=inPeriod(state.pagosProveedores).reduce((a,p)=>a+num(p.monto),0), net=cob-gastos-pch-pret-pprov; if($('financeKpis')) $('financeKpis').innerHTML=[['Cobrado',cob],['Gastos',gastos],['Pago choferes',pch],['Retenciones pagadas',pret],['Proveedores',pprov],['Caja neta',net]].map(([a,b])=>`<div class="kpi"><span>${a}</span><strong>${money(b)}</strong></div>`).join(''); table($('tblCashflow'),['Concepto','Total'],[['Facturado',money(fact)],['Cobrado clientes',money(cob)],['Cuentas por cobrar',money(fact-cob)],['Gastos de servicios',money(gastos)],['Pagos a choferes',money(pch)],['Retenciones pagadas',money(pret)],['Pagos proveedores',money(pprov)],['Flujo neto de caja',money(net)]]); const pr=providerRows(); if($('providerDeductions')) $('providerDeductions').innerHTML=pr.map(r=>`<div class="listItem"><strong>${esc(r.nombre)}</strong><span>Deducción ${money(r.ded)} · Pagado ${money(r.pag)} · Pend. ${money(r.balance)}</span></div>`).join('')||'<div class="empty">Sin deducciones.</div>'; }
+  function renderInvoices(){ const rows=state.facturas; table($('tblFacturas'),['Factura','Servicio','Cliente','Total','Balance','Estado','Acción'],rows.map(i=>{const s=byId(state.servicios,i.servicioId)||{};return[esc(i.numero),esc(s.numero),nameOf(state.clientes,s.clienteId),money(serviceTotal(s)),money(serviceBalance(s)),status(i.estado),actions('facturas',i.id)]})); const pending=rows.filter(x=>x.estado!=='Pagada').length; if($('invoiceSummary')) $('invoiceSummary').innerHTML=`<div class="listItem"><strong>Facturas</strong><span>${rows.length}</span></div><div class="listItem"><strong>Pendientes</strong><span>${pending}</span></div>`; }
+  function renderCobros(){ const pays=inPeriod(state.cobros); table($('tblCobros'),['Fecha','Servicio','Cliente','Monto','Método','Ref.','Notas','Acción'],pays.map(p=>{const s=byId(state.servicios,p.servicioId)||{};return[p.fecha,esc(s.numero),nameOf(state.clientes,s.clienteId),money(p.monto),esc(p.metodo),esc(p.referencia),esc(p.notas),actions('cobros',p.id)]})); const m={}; pays.forEach(p=>m[p.metodo]=(m[p.metodo]||0)+num(p.monto)); if($('methodSummary')) $('methodSummary').innerHTML=Object.entries(m).map(([k,v])=>`<div class="listItem"><strong>${esc(k)}</strong><span>${money(v)}</span></div>`).join('')||'<div class="empty">Sin cobros.</div>'; }
+  function renderEvidence(){ table($('tblEvidencias'),['Servicio','Tipo','Referencia / Archivo','Notas','Acción'],state.evidencias.map(e=>[nameOf(state.servicios.map(s=>({...s,nombre:s.numero})),e.servicioId),esc(e.tipo),`${esc(e.ref)}${e.archivo?`<span class="fileTag">${esc(e.archivo)}</span>`:''}`,esc(e.notas),actions('evidencias',e.id)])); }
+  function upsert(arr,obj){ const i=arr.findIndex(x=>x.id===obj.id); if(i>=0) arr[i]=obj; else arr.push(obj); }
+  function saveClient(){ const o={id:$('cliId').value||uid(),nombre:$('cliNombre').value,telefono:$('cliTelefono').value,email:$('cliEmail').value,municipio:$('cliMunicipio').value,direccion:$('cliDireccion').value,notas:$('cliNotas').value}; upsert(state.clientes,o); clear(['cliId','cliNombre','cliTelefono','cliEmail','cliMunicipio','cliDireccion','cliNotas']); save(); }
+  function saveDriver(){ const o={id:$('drvId').value||uid(),nombre:$('drvNombre').value,telefono:$('drvTelefono').value,ganancia:num($('drvGanancia').value),retencion:num($('drvRetencion').value),licencia:$('drvLicencia').value,expira:$('drvExpira').value,estado:$('drvEstado').value}; upsert(state.choferes,o); clear(['drvId','drvNombre','drvTelefono','drvLicencia','drvExpira']); save(); }
+  function saveProvider(){ const o={id:$('proId').value||uid(),nombre:$('proNombre').value,deduccion:num($('proDeduccion').value),telefono:$('proTelefono').value,email:$('proEmail').value,estado:$('proEstado').value}; upsert(state.proveedores,o); clear(['proId','proNombre','proTelefono','proEmail']); save(); }
+  function saveVehicle(){ const o={id:$('vehId').value||uid(),unidad:$('vehUnidad').value,tablilla:$('vehTablilla').value,marca:$('vehMarca').value,modelo:$('vehModelo').value,ano:$('vehAno').value,vin:$('vehVin').value,mantenimiento:$('vehMantenimiento').value,marbete:$('vehMarbete').value,estado:$('vehEstado').value}; upsert(state.vehiculos,o); clear(['vehId','vehUnidad','vehTablilla','vehMarca','vehModelo','vehAno','vehVin','vehMantenimiento','vehMarbete']); save(); }
+  function saveService(){ const id=$('srvId').value||uid(); const o={id,fecha:$('srvFecha').value||today(),hora:$('srvHora').value,numero:$('srvNumero').value||`PRT-${String(state.servicios.length+1).padStart(5,'0')}`,clienteId:$('srvCliente').value,telefono:$('srvTelefono').value,origen:$('srvOrigen').value,destino:$('srvDestino').value,tipo:$('srvTipo').value,choferId:$('srvChofer').value,proveedorId:$('srvProveedor').value,vehiculoId:$('srvVehiculo').value,millas:num($('srvMillas').value),base:num($('srvBase').value),peajes:num($('srvPeajes').value),gastos:num($('srvGastos').value),pagado:num($('srvPagado').value),estado:$('srvEstado').value,notas:$('srvNotas').value}; upsert(state.servicios,o); if(!state.facturas.find(f=>f.servicioId===id)) state.facturas.push({id:uid(),servicioId:id,numero:`FAC-${String(state.facturas.length+1).padStart(5,'0')}`,estado:o.estado==='Cobrado'?'Pagada':o.estado}); clear(['srvId','srvNumero','srvTelefono','srvOrigen','srvDestino','srvMillas','srvBase','srvPeajes','srvGastos','srvPagado','srvNotas']); save(); }
+  function saveInvoice(){ const sid=$('invService').value; if(!sid) return alert('Selecciona un servicio.'); const old=state.facturas.find(f=>f.servicioId===sid); const o={id:old?.id||uid(),servicioId:sid,numero:$('invNumber').value||old?.numero||`FAC-${String(state.facturas.length+1).padStart(5,'0')}`,estado:$('invStatus').value}; upsert(state.facturas,o); const s=byId(state.servicios,sid); if(s) s.estado=o.estado==='Pagada'?'Cobrado':o.estado; save(); }
+  function saveCustomerPayment(){ const sid=$('payService').value; if(!sid) return alert('Selecciona servicio.'); const o={id:uid(),fecha:$('payDate').value||today(),servicioId:sid,monto:num($('payAmount').value),metodo:$('payMethod').value,referencia:$('payRef').value,notas:$('payNote').value}; state.cobros.push(o); const s=byId(state.servicios,sid); if(s){ s.estado=serviceBalance(s)<=0?'Cobrado':'Parcial'; const f=state.facturas.find(x=>x.servicioId===sid); if(f) f.estado=s.estado==='Cobrado'?'Pagada':'Parcial'; } clear(['payAmount','payRef','payNote']); save(); }
+  function saveDriverPayment(){ state.pagosChoferes.push({id:uid(),fecha:$('payDriverDate').value||today(),choferId:$('payDriverId').value,monto:num($('payDriverAmount').value),metodo:$('payDriverMethod').value,referencia:$('payDriverRef').value,notas:$('payDriverNote').value}); clear(['payDriverAmount','payDriverRef','payDriverNote']); save(); }
+  function saveDriverPayment2(){ state.pagosChoferes.push({id:uid(),fecha:$('payDriverDate2').value||today(),choferId:$('payDriverId2').value,monto:num($('payDriverAmount2').value),metodo:$('payDriverMethod2').value,referencia:$('payDriverRef2').value,notas:$('payDriverNote2').value}); clear(['payDriverAmount2','payDriverRef2','payDriverNote2']); save(); }
+  function saveRetentionPayment(){ state.pagosRetenciones.push({id:uid(),fecha:$('retPayDate').value||today(),choferId:$('retPayDriverId').value,monto:num($('retPayAmount').value),metodo:$('retPayMethod').value,referencia:$('retPayRef').value,notas:$('retPayNote').value}); clear(['retPayAmount','retPayRef','retPayNote']); save(); }
+  function saveProviderPayment(){ state.pagosProveedores.push({id:uid(),fecha:$('provPayDate').value||today(),proveedorId:$('provPayId').value,monto:num($('provPayAmount').value),metodo:$('provPayMethod').value,referencia:$('provPayRef').value,notas:$('provPayNote').value}); clear(['provPayAmount','provPayRef','provPayNote']); save(); }
+  function saveEvidence(){ state.evidencias.push({id:uid(),servicioId:$('evService').value,tipo:$('evType').value,ref:$('evRef').value,notas:$('evNote').value,archivo:$('evFile')?.files?.[0]?.name||''}); if($('evFile')) $('evFile').value=''; clear(['evRef','evNote']); save(); }
+  function previewEvidenceFile(e){ const f=e.target.files?.[0]; if(f && !$('evRef').value) $('evRef').value=f.name; }
+  function clear(ids){ ids.forEach(id=>{ if($(id)) $(id).value=''; }); }
+  function edit(k,id){ const o=byId(state[k],id); if(!o) return; const maps={clientes:['cli',{nombre:'Nombre',telefono:'Telefono',email:'Email',municipio:'Municipio',direccion:'Direccion',notas:'Notas'},'clientes'],choferes:['drv',{nombre:'Nombre',telefono:'Telefono',ganancia:'Ganancia',retencion:'Retencion',licencia:'Licencia',expira:'Expira',estado:'Estado'},'choferes'],proveedores:['pro',{nombre:'Nombre',deduccion:'Deduccion',telefono:'Telefono',email:'Email',estado:'Estado'},'proveedores'],vehiculos:['veh',{unidad:'Unidad',tablilla:'Tablilla',marca:'Marca',modelo:'Modelo',ano:'Ano',vin:'Vin',mantenimiento:'Mantenimiento',marbete:'Marbete',estado:'Estado'},'flota']}; if(k==='servicios'){ openTab('servicios'); ['Id','Fecha','Hora','Numero','Telefono','Origen','Destino','Tipo','Millas','Base','Peajes','Gastos','Pagado','Estado','Notas'].forEach(F=>{const el=$('srv'+F); if(el) el.value=o[F.toLowerCase()]??''}); $('srvCliente').value=o.clienteId; $('srvChofer').value=o.choferId; $('srvProveedor').value=o.proveedorId; $('srvVehiculo').value=o.vehiculoId; return; } const m=maps[k]; if(!m) return; openTab(m[2]); $(m[0]+'Id').value=o.id; Object.entries(m[1]).forEach(([prop,F])=>{const el=$(m[0]+F); if(el) el.value=o[prop]??'';}); }
+  function calcServiceRate(){ $('srvBase').value=(num($('srvMillas').value)*num(state.cfg.rate)).toFixed(2); }
+  function routeQuote(){ const total=num($('routeMiles').value)*num($('routeRate').value||state.cfg.rate); const a=$('routeFrom').value,b=$('routeTo').value; $('routeResult').innerHTML=`<strong>Estimado:</strong> ${money(total)}<br><span>Millas: ${num($('routeMiles').value)} · Tarifa: ${money($('routeRate').value||state.cfg.rate)}/mi</span>`; if(a&&b&&$('mapFrame')) $('mapFrame').innerHTML=`<iframe loading="lazy" src="https://www.google.com/maps?q=${encodeURIComponent(a+' to '+b)}&output=embed"></iframe>`; }
+  function openMaps(a,b){ if(!a||!b) return alert('Completa origen y destino.'); window.open(`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(a)}&destination=${encodeURIComponent(b)}`,'_blank'); }
+  function loadConfigUI(){ ['Name','Phone','Email','Address','Rate','Tax'].forEach(F=>{const el=$('cfg'+F); if(el) el.value=state.cfg[F.toLowerCase()]??''}); }
+  function saveConfig(){ state.cfg={...state.cfg,name:$('cfgName').value,phone:$('cfgPhone').value,email:$('cfgEmail').value,address:$('cfgAddress').value,rate:num($('cfgRate').value),tax:num($('cfgTax').value)}; save(); }
+  function readLogo(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{state.cfg.logo=r.result; save();}; r.readAsDataURL(f); }
+  function pdfBase(title){ const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:'pt',format:'letter'}); const W=doc.internal.pageSize.getWidth(); doc.setFillColor(7,20,39); doc.rect(0,0,W,82,'F'); doc.setTextColor(255); doc.setFont('helvetica','bold'); doc.setFontSize(18); doc.text(state.cfg.name,40,34); doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.text(title,40,56); if(state.cfg.logo){try{doc.addImage(state.cfg.logo,state.cfg.logo.startsWith('data:image/png')?'PNG':'JPEG',W-92,18,48,48)}catch{}} doc.setTextColor(20); return doc; }
+  function pdfExecutive(){ const doc=pdfBase('Reporte Ejecutivo'); let y=118; const rows=filteredServices(); [['Servicios',rows.length],['Facturado',money(rows.reduce((a,s)=>a+serviceTotal(s),0))],['Cobrado',money(rows.reduce((a,s)=>a+servicePaid(s),0))],['Balance pendiente',money(rows.reduce((a,s)=>a+serviceBalance(s),0))],['Pago chofer pendiente',money(settlementRows().reduce((a,r)=>a+r.balance,0))]].forEach(([a,b])=>{doc.setFont('helvetica','bold');doc.text(String(a),50,y);doc.setFont('helvetica','normal');doc.text(String(b),260,y);y+=24;}); doc.save(`Reporte_Ejecutivo_PRT_${today()}.pdf`); }
+  function pdfServices(){ const doc=pdfBase('Servicios'); let y=115; filteredServices().forEach(s=>{ if(y>720){doc.addPage();y=50;} doc.setFont('helvetica','bold'); doc.text(`${s.fecha} · ${s.numero} · ${nameOf(state.clientes,s.clienteId)}`,40,y); y+=15; doc.setFont('helvetica','normal'); doc.text(`${s.origen} -> ${s.destino} | Total ${money(serviceTotal(s))} | Balance ${money(serviceBalance(s))}`,40,y); y+=24; }); doc.save(`Servicios_PRT_${today()}.pdf`); }
+  function pdfSettlement(){ const doc=pdfBase('Liquidación General'); let y=115; settlementRows().forEach(r=>{ if(y>720){doc.addPage();y=50;} doc.text(`${r.nombre} | Bruto ${money(r.bruto)} | Retención ${money(r.ret)} | Neto ${money(r.neto)} | Pagado ${money(r.pag)} | Balance ${money(r.balance)}`,40,y); y+=20; }); doc.save(`Liquidacion_PRT_${today()}.pdf`); }
+  function pdfRetention(){ pdfSettlement(); } function pdfDeductions(){ const doc=pdfBase('Deducciones Proveedores'); let y=115; providerRows().forEach(r=>{doc.text(`${r.nombre} | Deducción ${money(r.ded)} | Pagado ${money(r.pag)} | Balance ${money(r.balance)}`,40,y); y+=22;}); doc.save(`Deducciones_PRT_${today()}.pdf`); } function pdfRoutes(){ pdfServices(); }
+  function pdfInvoice(){ const sid=$('invService').value||state.servicios[0]?.id; const s=byId(state.servicios,sid); if(!s) return alert('No hay servicio.'); const doc=pdfBase('Factura'); doc.text(`Servicio: ${s.numero}`,40,120); doc.text(`Cliente: ${nameOf(state.clientes,s.clienteId)}`,40,145); doc.text(`Ruta: ${s.origen} -> ${s.destino}`,40,170); doc.text(`Total: ${money(serviceTotal(s))}`,40,195); doc.text(`Balance: ${money(serviceBalance(s))}`,40,220); doc.save(`Factura_${s.numero}.pdf`); }
+  function pdfReceipt(){ const p=state.cobros.at(-1); if(!p) return alert('No hay cobros.'); const s=byId(state.servicios,p.servicioId)||{}; const doc=pdfBase('Recibo de Cobro'); doc.text(`Fecha: ${p.fecha}`,40,120); doc.text(`Servicio: ${s.numero||''}`,40,145); doc.text(`Cliente: ${nameOf(state.clientes,s.clienteId)}`,40,170); doc.text(`Monto: ${money(p.monto)} · Método: ${p.metodo}`,40,195); doc.text(`Referencia: ${p.referencia||''}`,40,220); doc.save(`Recibo_${p.fecha}.pdf`); }
+  function exportCsv(){ const head=['fecha','servicio','cliente','origen','destino','chofer','millas','total','cobrado','balance','estado']; const rows=filteredServices().map(s=>[s.fecha,s.numero,nameOf(state.clientes,s.clienteId),s.origen,s.destino,nameOf(state.choferes,s.choferId),s.millas,serviceTotal(s),servicePaid(s),serviceBalance(s),s.estado]); download('puerto_rico_transport_servicios.csv',[head,...rows].map(r=>r.map(c=>`"${String(c??'').replace(/"/g,'""')}"`).join(',')).join('\n'),'text/csv'); }
+  function backupJson(){ download(`backup_prt_pro_max_${today()}.json`,JSON.stringify(state,null,2),'application/json'); }
+  function importJson(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ state=merge(structuredClone(base),JSON.parse(r.result)); save(); alert('Backup importado.'); } catch{ alert('Archivo inválido.'); } }; r.readAsText(f); }
+  function download(name,content,type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),800); }
+  window.addEventListener('DOMContentLoaded', init);
 })();
