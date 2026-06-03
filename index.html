@@ -128,7 +128,20 @@
         <article class="panel"><h2>Pagos a Choferes</h2><div id="driverPayments"></div></article>
         <article class="panel"><h2>Pago de Retenciones</h2><form id="formRetention" class="stack"><select id="retDriver"></select><input id="retDate" type="date"><input id="retAmount" type="number" step="0.01" placeholder="Monto"><button class="btn primary">Pagar retención</button></form></article>
       </div>
-      <article class="panel"><h2>Flujo de Caja</h2><div class="table-wrap"><table id="tblCashflow"></table></div></article>
+      <article class="panel"><h2>Flujo de Caja</h2>
+        <form id="formCashflow" class="form mini">
+          <input type="hidden" id="cfId">
+          <label>Fecha<input id="cfDate" type="date"></label>
+          <label>Tipo<select id="cfType"><option>Ingreso</option><option>Gasto</option></select></label>
+          <label>Categoría<input id="cfCategory" placeholder="Ej. Peaje, combustible, ajuste"></label>
+          <label>Método<select id="cfMethod"><option>ATH Móvil</option><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option><option>Cheque</option><option>Operacional</option></select></label>
+          <label>Monto<input id="cfAmount" type="number" step="0.01" value="0"></label>
+          <label class="wide">Detalle<input id="cfDetail" placeholder="Nota interna"></label>
+          <button class="btn primary">Guardar Movimiento</button>
+          <button id="btnClearCashflow" type="button" class="btn ghost">Limpiar</button>
+        </form>
+        <div class="table-wrap"><table id="tblCashflow"></table></div>
+      </article>
     </section>
 
     <section id="reportes" class="view hidden">
@@ -139,6 +152,7 @@
       <div class="head"><h2>Configuración</h2><button form="formConfig" class="btn primary">Guardar</button></div>
       <form id="formConfig" class="form"><label>Negocio<input id="cfgName"></label><label>Teléfono<input id="cfgPhone"></label><label>Email<input id="cfgEmail"></label><label>Tarifa por milla<input id="cfgMile" type="number" step="0.01"></label></form>
       <div class="panel muted"><p>Estado del sistema: <strong id="systemState">Inicializando</strong></p></div>
+      <div class="panel danger-zone"><h2>Zona de Reset</h2><p class="muted">Borra datos locales y en Firebase para comenzar limpio. Haz backup antes.</p><button id="btnResetSystem" type="button" class="btn danger">Reset Total del Sistema</button></div>
     </section>
   
       </main>
