@@ -2,172 +2,189 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SAMMY TOWING INC — Transport Manager v14</title>
-
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Puerto Rico Transport PRO</title>
+  <meta name="theme-color" content="#0b1b33" />
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
-
 <body>
-  <!-- ===== HEADER ===== -->
   <header class="topbar">
     <div class="brand">
-      <div class="logo">ST</div>
-      <div class="title">SAMMY TOWING INC</div>
+      <div class="logo" id="brandLogo">PR</div>
+      <div>
+        <strong id="brandName">Puerto Rico Transport PRO</strong>
+        <span id="brandSub">Control operacional de transporte, grúas y servicios</span>
+      </div>
     </div>
-    <button id="logoutBtn">Salir</button>
+    <div class="topActions">
+      <button class="ghost" id="btnQuickPdf">PDF Ejecutivo</button>
+      <button class="primary" data-open="servicios">Nuevo Servicio</button>
+    </div>
   </header>
 
-  <!-- ===== NAVEGACIÓN ===== -->
-  <nav class="tabs">
-    <button data-tab="proveedores">Proveedores</button>
+  <nav class="tabs" aria-label="Navegación principal">
+    <button class="active" data-tab="dashboard">Dashboard</button>
+    <button data-tab="servicios">Servicios</button>
+    <button data-tab="clientes">Clientes</button>
     <button data-tab="choferes">Choferes</button>
-    <button data-tab="millas">Millas</button>
-    <button data-tab="cierres">Cierre Semanal</button>
-    <button data-tab="retenciones">Retenciones 10%</button>
-    <button data-tab="deducciones">Deducciones Proveedores</button>
-    <button data-tab="pagos">Pagos Choferes</button>
-    <button data-tab="flujo">Flujo de Caja</button>
+    <button data-tab="proveedores">Proveedores</button>
+    <button data-tab="flota">Flota</button>
+    <button data-tab="finanzas">Finanzas</button>
+    <button data-tab="reportes">Reportes</button>
     <button data-tab="config">Configuración</button>
   </nav>
 
-  <!-- ===== FILTROS GLOBALES (aplican a Millas/Cierre/Retenciones/Deducciones/Pagos/Flujo) ===== -->
-  <section class="globalFilters" id="globalFilters">
-    <div class="gf">
-      <label>Desde</label>
-      <input type="date" id="fDesde">
-    </div>
-    <div class="gf">
-      <label>Hasta</label>
-      <input type="date" id="fHasta">
-    </div>
-    <div class="gf">
-      <label>Buscar</label>
-      <input type="text" id="fBuscar" placeholder="Chofer o Proveedor">
-    </div>
-    <div class="gf gfBtns">
-      <button id="fAplicar" type="button">Aplicar</button>
-      <button id="fLimpiar" type="button">Limpiar</button>
-    </div>
+  <section class="filters">
+    <label>Desde<input type="date" id="fDesde"></label>
+    <label>Hasta<input type="date" id="fHasta"></label>
+    <label>Búsqueda<input type="search" id="fBuscar" placeholder="Cliente, chofer, proveedor, pueblo..."></label>
+    <label>Estado<select id="fEstado"><option value="">Todos</option><option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Cancelado</option></select></label>
+    <button id="btnApplyFilters">Aplicar</button>
+    <button class="ghost" id="btnClearFilters">Limpiar</button>
   </section>
 
-  <!-- ===== CONTENIDO PRINCIPAL ===== -->
   <main>
-
-    <!-- === Proveedores === -->
-    <section id="proveedores" class="tab">
-      <h2>Gestión de Proveedores</h2>
-      <form id="formProveedor">
-        <input id="provNombre" placeholder="Nombre del proveedor" required />
-        <input id="provPorc" type="number" step="0.01" placeholder="% Deducción" required />
-        <button type="submit">Añadir</button>
-      </form>
-      <table id="tablaProveedores"></table>
-    </section>
-
-    <!-- === Choferes === -->
-    <section id="choferes" class="tab hidden">
-      <h2>Gestión de Choferes</h2>
-      <form id="formChofer">
-        <input id="chNombre" placeholder="Nombre del chofer" required />
-        <input id="chGanancia" type="number" step="0.01" placeholder="% Ganancia" required />
-        <input id="chDeduccion" type="number" step="0.01" placeholder="% Deducción" required />
-        <button type="submit">Añadir</button>
-      </form>
-      <table id="tablaChoferes"></table>
-    </section>
-
-    <!-- === Millas === -->
-    <section id="millas" class="tab hidden">
-      <h2>Registro de Millas Recorridas</h2>
-      <div id="millasKPI" class="kpi">
-        <div class="kpiCard" id="kpiMillas"><h3>🧭 Total Millas</h3><p>0</p></div>
-        <div class="kpiCard" id="kpiServicios"><h3>📋 Servicios</h3><p>0</p></div>
-        <div class="kpiCard" id="kpiValor"><h3>💵 Valor Total</h3><p>$0.00</p></div>
+    <section id="dashboard" class="tabView">
+      <div class="hero">
+        <div>
+          <p class="eyebrow">Centro de mando</p>
+          <h1>Operación clara, cobros controlados y cierres listos.</h1>
+          <p>Todo lo que antes estaba regado ahora vive en una sola cabina. Sin drama, sin calculadora de emergencia.</p>
+        </div>
+        <div class="heroCard">
+          <span>Balance pendiente</span>
+          <strong id="heroBalance">$0.00</strong>
+          <small id="heroServices">0 servicios activos</small>
+        </div>
       </div>
-
-      <div class="filters">
-        <select id="filtroChofer"><option value="">Filtrar por Chofer</option></select>
-        <select id="filtroProveedor"><option value="">Filtrar por Proveedor</option></select>
-        <button id="btnMostrarTodo" type="button">Mostrar Todo</button>
-      </div>
-
-      <form id="formMillas">
-        <!-- NUEVO: Fecha del servicio (clave para filtros desde/hasta) -->
-        <input id="mFecha" type="date" required />
-
-        <select id="mChofer" required><option value="">Seleccionar Chofer</option></select>
-        <select id="mProveedor" required><option value="">Seleccionar Proveedor</option></select>
-        <input id="mMillas" type="number" placeholder="Millas recorridas" required />
-        <button type="submit">Registrar</button>
-      </form>
-
-      <table id="tablaMillas"></table>
-    </section>
-
-    <!-- === Cierre Semanal === -->
-    <section id="cierres" class="tab hidden">
-      <h2>Cierre Semanal</h2>
-      <div id="tablaCierres"></div>
-      <button id="pdfCierre" type="button">Exportar Cierre PDF</button>
-    </section>
-
-    <!-- === Retenciones 10% === -->
-    <section id="retenciones" class="tab hidden">
-      <h2>Retenciones 10% por Chofer</h2>
-      <div id="tablaRetenciones"></div>
-      <button id="pdfRetenciones" type="button">Exportar Retenciones PDF</button>
-    </section>
-
-    <!-- === Deducciones a Proveedores === -->
-    <section id="deducciones" class="tab hidden">
-      <h2>Deducciones a Proveedores</h2>
-      <div id="tablaDeducciones"></div>
-      <button id="pdfDeducciones" type="button">Exportar Deducciones PDF</button>
-    </section>
-
-    <!-- === Pagos a Choferes === -->
-    <section id="pagos" class="tab hidden">
-      <h2>Pagos a Choferes</h2>
-      <div id="tablaPagos"></div>
-      <button id="pdfPagos" type="button">Exportar Pagos PDF</button>
-    </section>
-
-    <!-- === Flujo de Caja === -->
-    <section id="flujo" class="tab hidden">
-      <h2>Flujo de Caja</h2>
-      <div id="tablaFlujo"></div>
-    </section>
-
-    <!-- === Configuración === -->
-    <section id="config" class="tab hidden">
-      <h2>Configuración General</h2>
-      <div class="configBox">
-        <label>Logo del Negocio:</label>
-        <input id="logoInput" type="file" accept="image/png,image/jpeg" />
-
-        <label>PIN de Seguridad:</label>
-        <input id="pinInput" type="password" placeholder="****" />
-
-        <label>Valor por milla ($):</label>
-        <input id="valorMillaInput" type="number" step="0.01" placeholder="1.00" />
-
-        <label>Umbral Alto ($):</label>
-        <input id="umbralAlto" type="number" step="0.01" placeholder="1000" />
-
-        <label>Umbral Medio ($):</label>
-        <input id="umbralMedio" type="number" step="0.01" placeholder="400" />
-
-        <button id="saveConfig" type="button">Guardar Configuración</button>
-        <button id="backupAll" type="button">Backup General</button>
+      <div class="kpis" id="kpiGrid"></div>
+      <div class="grid two">
+        <article class="panel"><h2>Servicios recientes</h2><div class="tableWrap"><table id="tblRecent"></table></div></article>
+        <article class="panel"><h2>Top desempeño</h2><div id="topPerformance" class="list"></div></article>
       </div>
     </section>
 
+    <section id="servicios" class="tabView hidden">
+      <div class="sectionHead"><h2>Órdenes de Servicio</h2><button class="primary" id="btnSaveService">Guardar Servicio</button></div>
+      <form class="cardForm" id="formServicio">
+        <input type="hidden" id="srvId">
+        <label>Fecha<input type="date" id="srvFecha" required></label>
+        <label>Hora<input type="time" id="srvHora"></label>
+        <label>No. Servicio<input id="srvNumero" placeholder="AUTO"></label>
+        <label>Cliente<select id="srvCliente" required></select></label>
+        <label>Teléfono<input id="srvTelefono" placeholder="787-000-0000"></label>
+        <label>Origen<input id="srvOrigen" placeholder="Municipio / dirección" required></label>
+        <label>Destino<input id="srvDestino" placeholder="Municipio / dirección" required></label>
+        <label>Tipo de servicio<select id="srvTipo"><option>Grúa</option><option>Transporte</option><option>Asistencia en carretera</option><option>Movimiento interno</option><option>Otro</option></select></label>
+        <label>Chofer<select id="srvChofer" required></select></label>
+        <label>Proveedor<select id="srvProveedor"></select></label>
+        <label>Vehículo<select id="srvVehiculo"></select></label>
+        <label>Millas<input type="number" step="0.01" id="srvMillas" value="0"></label>
+        <label>Tarifa base<input type="number" step="0.01" id="srvBase" value="0"></label>
+        <label>Peajes<input type="number" step="0.01" id="srvPeajes" value="0"></label>
+        <label>Gastos<input type="number" step="0.01" id="srvGastos" value="0"></label>
+        <label>Monto cobrado<input type="number" step="0.01" id="srvPagado" value="0"></label>
+        <label>Estado<select id="srvEstado"><option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Cancelado</option></select></label>
+        <label class="wide">Notas<textarea id="srvNotas" placeholder="Detalles, condición del vehículo, evidencia, autorización..."></textarea></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblServicios"></table></div></div>
+    </section>
+
+    <section id="clientes" class="tabView hidden">
+      <div class="sectionHead"><h2>Clientes</h2><button class="primary" id="btnSaveClient">Guardar Cliente</button></div>
+      <form class="cardForm" id="formCliente">
+        <input type="hidden" id="cliId">
+        <label>Nombre<input id="cliNombre" required></label>
+        <label>Teléfono<input id="cliTelefono"></label>
+        <label>Email<input type="email" id="cliEmail"></label>
+        <label>Municipio<input id="cliMunicipio"></label>
+        <label class="wide">Dirección<input id="cliDireccion"></label>
+        <label class="wide">Notas<textarea id="cliNotas"></textarea></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblClientes"></table></div></div>
+    </section>
+
+    <section id="choferes" class="tabView hidden">
+      <div class="sectionHead"><h2>Choferes</h2><button class="primary" id="btnSaveDriver">Guardar Chofer</button></div>
+      <form class="cardForm" id="formChofer">
+        <input type="hidden" id="drvId">
+        <label>Nombre<input id="drvNombre" required></label>
+        <label>Teléfono<input id="drvTelefono"></label>
+        <label>% Ganancia<input type="number" step="0.01" id="drvGanancia" value="50"></label>
+        <label>% Retención<input type="number" step="0.01" id="drvRetencion" value="10"></label>
+        <label>Licencia<input id="drvLicencia"></label>
+        <label>Expira licencia<input type="date" id="drvExpira"></label>
+        <label>Estado<select id="drvEstado"><option>Activo</option><option>Inactivo</option></select></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblChoferes"></table></div></div>
+    </section>
+
+    <section id="proveedores" class="tabView hidden">
+      <div class="sectionHead"><h2>Proveedores</h2><button class="primary" id="btnSaveProvider">Guardar Proveedor</button></div>
+      <form class="cardForm" id="formProveedor">
+        <input type="hidden" id="proId">
+        <label>Nombre<input id="proNombre" required></label>
+        <label>% Deducción<input type="number" step="0.01" id="proDeduccion" value="0"></label>
+        <label>Teléfono<input id="proTelefono"></label>
+        <label>Email<input type="email" id="proEmail"></label>
+        <label>Estado<select id="proEstado"><option>Activo</option><option>Inactivo</option></select></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblProveedores"></table></div></div>
+    </section>
+
+    <section id="flota" class="tabView hidden">
+      <div class="sectionHead"><h2>Centro de Flota</h2><button class="primary" id="btnSaveVehicle">Guardar Vehículo</button></div>
+      <form class="cardForm" id="formVehiculo">
+        <input type="hidden" id="vehId">
+        <label>Unidad<input id="vehUnidad" required></label>
+        <label>Tablilla<input id="vehTablilla"></label>
+        <label>Marca<input id="vehMarca"></label>
+        <label>Modelo<input id="vehModelo"></label>
+        <label>Año<input type="number" id="vehAno"></label>
+        <label>VIN<input id="vehVin"></label>
+        <label>Próximo mantenimiento<input type="date" id="vehMantenimiento"></label>
+        <label>Marbete<input type="date" id="vehMarbete"></label>
+        <label>Estado<select id="vehEstado"><option>Activo</option><option>Mantenimiento</option><option>Inactivo</option></select></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblVehiculos"></table></div></div>
+    </section>
+
+    <section id="finanzas" class="tabView hidden">
+      <div class="kpis" id="financeKpis"></div>
+      <div class="grid two">
+        <article class="panel"><h2>Pagos a Choferes</h2><div id="driverPayments"></div></article>
+        <article class="panel"><h2>Deducciones Proveedores</h2><div id="providerDeductions"></div></article>
+      </div>
+      <article class="panel"><h2>Flujo de Caja</h2><div class="tableWrap"><table id="tblCashflow"></table></div></article>
+    </section>
+
+    <section id="reportes" class="tabView hidden">
+      <div class="reportCards">
+        <button id="pdfExecutive">Reporte Ejecutivo PDF</button>
+        <button id="pdfServices">Listado de Servicios PDF</button>
+        <button id="exportCsv">Exportar Servicios CSV</button>
+        <button id="backupJson">Backup JSON</button>
+        <label class="importBox">Importar Backup JSON<input type="file" id="importJson" accept="application/json"></label>
+      </div>
+    </section>
+
+    <section id="config" class="tabView hidden">
+      <div class="sectionHead"><h2>Configuración</h2><button class="primary" id="btnSaveConfig">Guardar Configuración</button></div>
+      <form class="cardForm" id="formConfig">
+        <label>Nombre del negocio<input id="cfgName"></label>
+        <label>Teléfono<input id="cfgPhone"></label>
+        <label>Email<input type="email" id="cfgEmail"></label>
+        <label>Dirección<input id="cfgAddress"></label>
+        <label>Tarifa por milla<input type="number" step="0.01" id="cfgRate"></label>
+        <label>IVU %<input type="number" step="0.01" id="cfgTax"></label>
+        <label>Logo<input type="file" id="cfgLogo" accept="image/png,image/jpeg"></label>
+      </form>
+      <p class="muted">Datos guardados en este navegador. Para uso multi-dispositivo, el próximo salto empresarial es Firebase.</p>
+    </section>
   </main>
 
+  <template id="emptyTemplate"><div class="empty">Sin datos todavía. Añade registros y esto prende como dashboard de verdad.</div></template>
   <script src="app.js"></script>
 </body>
 </html>
