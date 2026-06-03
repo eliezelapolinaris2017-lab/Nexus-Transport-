@@ -1,25 +1,12 @@
-PUERTO RICO TRANSPORT ULTRA V2
+Nexus Transport PR - Operacional
 
-Incluye:
-- Dashboard Ejecutivo
-- Clientes
-- Servicios / Ordenes
-- Choferes
-- Proveedores
-- Flota
-- GPS y Rutas con Google Maps
-- Facturacion
-- Cobros y metodos de pago
-- Pagos a choferes
-- Retenciones
-- Deducciones a proveedores
-- Flujo de caja
-- Reportes PDF
-- Documentos y evidencias
-- Configuracion
-- Backup JSON / Importacion / CSV
+Módulos conectados:
+- Servicios generan facturas.
+- Facturas reciben cobros.
+- Cobros actualizan balance, estado, flujo de caja y dashboard.
+- Pagos a choferes, retenciones y deducciones se calculan desde facturas cobradas.
+- Firebase usa Anonymous Auth y Firestore en /apps/nexusTransportPR.
 
-Notas:
-- Funciona sin backend usando localStorage.
-- Para uso multi-dispositivo real se recomienda Firebase Firestore + Firebase Storage.
-- Los mapas abren Google Maps y tambien muestran vista embebida para ruta estimada.
+Requisito Firebase:
+Authentication > Sign-in method > Anonymous > Enable.
+Copiar firestore.rules en Firestore Rules y publicar.
