@@ -3,165 +3,188 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Nexus Transport PR</title>
-  <meta name="theme-color" content="#0f172a" />
+  <title>Puerto Rico Transport PRO</title>
+  <meta name="theme-color" content="#0b1b33" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-  <aside class="sidebar">
+  <header class="topbar">
     <div class="brand">
-      <div class="mark" id="brandMark">NT</div>
+      <div class="logo" id="brandLogo">PR</div>
       <div>
-        <strong id="brandName">Nexus Transport PR</strong>
-        <span>Operación • Cobros • Cierres</span>
+        <strong id="brandName">Puerto Rico Transport PRO</strong>
+        <span id="brandSub">Control operacional de transporte, grúas y servicios</span>
       </div>
     </div>
-    <nav class="nav">
-      <button class="active" data-tab="dashboard">Dashboard</button>
-      <button data-tab="clientes">Clientes</button>
-      <button data-tab="servicios">Servicios</button>
-      <button data-tab="facturas">Facturación</button>
-      <button data-tab="cobros">Cobros</button>
-      <button data-tab="choferes">Choferes</button>
-      <button data-tab="proveedores">Proveedores</button>
-      <button data-tab="flota">Flota</button>
-      <button data-tab="rutas">GPS y Rutas</button>
-      <button data-tab="finanzas">Finanzas</button>
-      <button data-tab="evidencias">Evidencias</button>
-      <button data-tab="reportes">Reportes</button>
-      <button data-tab="config">Configuración</button>
-    </nav>
-    <div class="syncBox"><span id="syncDot"></span><strong id="syncStatus">Iniciando</strong></div>
-  </aside>
+    <div class="topActions">
+      <button class="ghost" id="btnQuickPdf">PDF Ejecutivo</button>
+      <button class="primary" data-open="servicios">Nuevo Servicio</button>
+    </div>
+  </header>
 
-  <main class="workspace">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">Panel empresarial</p>
-        <h1 id="pageTitle">Dashboard</h1>
-      </div>
-      <div class="actions">
-        <button class="soft" id="btnDemo">Demo</button>
-        <button class="soft" id="btnSync">Sincronizar</button>
-        <button class="primary" data-open="servicios">Nuevo Servicio</button>
-      </div>
-    </header>
+  <nav class="tabs" aria-label="Navegación principal">
+    <button class="active" data-tab="dashboard">Dashboard</button>
+    <button data-tab="servicios">Servicios</button>
+    <button data-tab="clientes">Clientes</button>
+    <button data-tab="choferes">Choferes</button>
+    <button data-tab="proveedores">Proveedores</button>
+    <button data-tab="flota">Flota</button>
+    <button data-tab="finanzas">Finanzas</button>
+    <button data-tab="reportes">Reportes</button>
+    <button data-tab="config">Configuración</button>
+  </nav>
 
-    <section class="filters">
-      <label>Desde<input type="date" id="fDesde"></label>
-      <label>Hasta<input type="date" id="fHasta"></label>
-      <label>Buscar<input type="search" id="fBuscar" placeholder="Cliente, chofer, factura, ruta"></label>
-      <label>Estado<select id="fEstado"><option value="">Todos</option><option>Pendiente</option><option>Facturado</option><option>Parcial</option><option>Pagada</option><option>Cobrado</option><option>Cancelado</option></select></label>
-      <button id="btnAplicar">Aplicar</button>
-      <button class="ghost" id="btnLimpiar">Limpiar</button>
-    </section>
+  <section class="filters">
+    <label>Desde<input type="date" id="fDesde"></label>
+    <label>Hasta<input type="date" id="fHasta"></label>
+    <label>Búsqueda<input type="search" id="fBuscar" placeholder="Cliente, chofer, proveedor, pueblo..."></label>
+    <label>Estado<select id="fEstado"><option value="">Todos</option><option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Cancelado</option></select></label>
+    <button id="btnApplyFilters">Aplicar</button>
+    <button class="ghost" id="btnClearFilters">Limpiar</button>
+  </section>
 
-    <section id="dashboard" class="view">
+  <main>
+    <section id="dashboard" class="tabView">
       <div class="hero">
-        <div><p class="eyebrow">Centro de mando</p><h2>Operación conectada: servicio, factura, cobro y pago sin doble entrada.</h2></div>
-        <div class="heroCard"><span>Balance por cobrar</span><strong id="dashBalance">$0.00</strong><small id="dashOpen">0 facturas abiertas</small></div>
+        <div>
+          <p class="eyebrow">Centro de mando</p>
+          <h1>Operación clara, cobros controlados y cierres listos.</h1>
+          <p>Todo lo que antes estaba regado ahora vive en una sola cabina. Sin drama, sin calculadora de emergencia.</p>
+        </div>
+        <div class="heroCard">
+          <span>Balance pendiente</span>
+          <strong id="heroBalance">$0.00</strong>
+          <small id="heroServices">0 servicios activos</small>
+        </div>
       </div>
-      <div class="kpis" id="kpis"></div>
+      <div class="kpis" id="kpiGrid"></div>
       <div class="grid two">
-        <article class="panel"><h3>Servicios recientes</h3><div class="tableWrap"><table id="tblRecent"></table></div></article>
-        <article class="panel"><h3>Alertas operacionales</h3><div class="list" id="alertsBox"></div></article>
+        <article class="panel"><h2>Servicios recientes</h2><div class="tableWrap"><table id="tblRecent"></table></div></article>
+        <article class="panel"><h2>Top desempeño</h2><div id="topPerformance" class="list"></div></article>
       </div>
     </section>
 
-    <section id="clientes" class="view hidden">
-      <div class="sectionHead"><h2>Clientes</h2><button class="primary" id="saveClient">Guardar Cliente</button></div>
-      <form class="formGrid">
-        <input type="hidden" id="cliId">
-        <label>Nombre<input id="cliNombre" required></label><label>Teléfono<input id="cliTelefono"></label><label>Email<input id="cliEmail"></label><label>Municipio<input id="cliMunicipio"></label><label class="wide">Dirección<input id="cliDireccion"></label>
-      </form>
-      <article class="panel"><div class="tableWrap"><table id="tblClientes"></table></div></article>
-    </section>
-
-    <section id="servicios" class="view hidden">
-      <div class="sectionHead"><h2>Servicios</h2><button class="primary" id="saveService">Guardar Servicio</button></div>
-      <form class="formGrid">
+    <section id="servicios" class="tabView hidden">
+      <div class="sectionHead"><h2>Órdenes de Servicio</h2><button class="primary" id="btnSaveService">Guardar Servicio</button></div>
+      <form class="cardForm" id="formServicio">
         <input type="hidden" id="srvId">
-        <label>Fecha<input type="date" id="srvFecha"></label><label>Hora<input type="time" id="srvHora"></label><label>No. Servicio<input id="srvNumero" placeholder="AUTO"></label><label>Cliente<select id="srvCliente"></select></label>
-        <label>Teléfono<input id="srvTelefono"></label><label>Origen<input id="srvOrigen" placeholder="San Juan, PR"></label><label>Destino<input id="srvDestino" placeholder="Ponce, PR"></label><label>Tipo<select id="srvTipo"><option>Grúa</option><option>Transporte</option><option>Asistencia</option><option>Otro</option></select></label>
-        <label>Chofer<select id="srvChofer"></select></label><label>Proveedor<select id="srvProveedor"></select></label><label>Vehículo<select id="srvVehiculo"></select></label><label>Millas<input type="number" step="0.01" id="srvMillas" value="0"></label>
-        <label>Tarifa base<input type="number" step="0.01" id="srvBase" value="0"></label><label>Peajes<input type="number" step="0.01" id="srvPeajes" value="0"></label><label>Gastos<input type="number" step="0.01" id="srvGastos" value="0"></label><label>Estado<select id="srvEstado"><option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Cancelado</option></select></label>
-        <label class="wide">Notas<textarea id="srvNotas"></textarea></label>
+        <label>Fecha<input type="date" id="srvFecha" required></label>
+        <label>Hora<input type="time" id="srvHora"></label>
+        <label>No. Servicio<input id="srvNumero" placeholder="AUTO"></label>
+        <label>Cliente<select id="srvCliente" required></select></label>
+        <label>Teléfono<input id="srvTelefono" placeholder="787-000-0000"></label>
+        <label>Origen<input id="srvOrigen" placeholder="Municipio / dirección" required></label>
+        <label>Destino<input id="srvDestino" placeholder="Municipio / dirección" required></label>
+        <label>Tipo de servicio<select id="srvTipo"><option>Grúa</option><option>Transporte</option><option>Asistencia en carretera</option><option>Movimiento interno</option><option>Otro</option></select></label>
+        <label>Chofer<select id="srvChofer" required></select></label>
+        <label>Proveedor<select id="srvProveedor"></select></label>
+        <label>Vehículo<select id="srvVehiculo"></select></label>
+        <label>Millas<input type="number" step="0.01" id="srvMillas" value="0"></label>
+        <label>Tarifa base<input type="number" step="0.01" id="srvBase" value="0"></label>
+        <label>Peajes<input type="number" step="0.01" id="srvPeajes" value="0"></label>
+        <label>Gastos<input type="number" step="0.01" id="srvGastos" value="0"></label>
+        <label>Monto cobrado<input type="number" step="0.01" id="srvPagado" value="0"></label>
+        <label>Estado<select id="srvEstado"><option>Pendiente</option><option>Facturado</option><option>Cobrado</option><option>Cancelado</option></select></label>
+        <label class="wide">Notas<textarea id="srvNotas" placeholder="Detalles, condición del vehículo, evidencia, autorización..."></textarea></label>
       </form>
-      <article class="panel"><div class="tableWrap"><table id="tblServicios"></table></div></article>
+      <div class="panel"><div class="tableWrap"><table id="tblServicios"></table></div></div>
     </section>
 
-    <section id="facturas" class="view hidden">
-      <div class="sectionHead"><h2>Facturación</h2><button class="primary" id="btnInvoiceSelected">Crear Factura</button></div>
-      <form class="formGrid compact"><label>Servicio sin facturar<select id="invoiceService"></select></label><label>IVU %<input type="number" step="0.01" id="invoiceTax"></label><label>Vence<input type="date" id="invoiceDue"></label></form>
-      <article class="panel"><div class="tableWrap"><table id="tblFacturas"></table></div></article>
-    </section>
-
-    <section id="cobros" class="view hidden">
-      <div class="sectionHead"><h2>Cobros</h2><button class="primary" id="savePayment">Registrar Cobro</button></div>
-      <form class="formGrid compact">
-        <input type="hidden" id="payId"><label>Factura<select id="payInvoice"></select></label><label>Fecha<input type="date" id="payFecha"></label><label>Monto<input type="number" step="0.01" id="payMonto"></label><label>Método<select id="payMetodo"><option>ATH Móvil</option><option>Efectivo</option><option>Tarjeta</option><option>Cheque</option><option>Transferencia</option></select></label><label>Referencia<input id="payRef"></label><label>Nota<input id="payNota"></label>
+    <section id="clientes" class="tabView hidden">
+      <div class="sectionHead"><h2>Clientes</h2><button class="primary" id="btnSaveClient">Guardar Cliente</button></div>
+      <form class="cardForm" id="formCliente">
+        <input type="hidden" id="cliId">
+        <label>Nombre<input id="cliNombre" required></label>
+        <label>Teléfono<input id="cliTelefono"></label>
+        <label>Email<input type="email" id="cliEmail"></label>
+        <label>Municipio<input id="cliMunicipio"></label>
+        <label class="wide">Dirección<input id="cliDireccion"></label>
+        <label class="wide">Notas<textarea id="cliNotas"></textarea></label>
       </form>
-      <article class="panel"><div class="tableWrap"><table id="tblCobros"></table></div></article>
+      <div class="panel"><div class="tableWrap"><table id="tblClientes"></table></div></div>
     </section>
 
-    <section id="choferes" class="view hidden">
-      <div class="sectionHead"><h2>Choferes</h2><button class="primary" id="saveDriver">Guardar Chofer</button></div>
-      <form class="formGrid">
-        <input type="hidden" id="drvId"><label>Nombre<input id="drvNombre"></label><label>Teléfono<input id="drvTelefono"></label><label>% Ganancia<input type="number" step="0.01" id="drvGanancia" value="50"></label><label>% Retención<input type="number" step="0.01" id="drvRetencion" value="10"></label><label>Licencia<input id="drvLicencia"></label><label>Expira<input type="date" id="drvExpira"></label>
+    <section id="choferes" class="tabView hidden">
+      <div class="sectionHead"><h2>Choferes</h2><button class="primary" id="btnSaveDriver">Guardar Chofer</button></div>
+      <form class="cardForm" id="formChofer">
+        <input type="hidden" id="drvId">
+        <label>Nombre<input id="drvNombre" required></label>
+        <label>Teléfono<input id="drvTelefono"></label>
+        <label>% Ganancia<input type="number" step="0.01" id="drvGanancia" value="50"></label>
+        <label>% Retención<input type="number" step="0.01" id="drvRetencion" value="10"></label>
+        <label>Licencia<input id="drvLicencia"></label>
+        <label>Expira licencia<input type="date" id="drvExpira"></label>
+        <label>Estado<select id="drvEstado"><option>Activo</option><option>Inactivo</option></select></label>
       </form>
-      <article class="panel"><div class="tableWrap"><table id="tblChoferes"></table></div></article>
+      <div class="panel"><div class="tableWrap"><table id="tblChoferes"></table></div></div>
     </section>
 
-    <section id="proveedores" class="view hidden">
-      <div class="sectionHead"><h2>Proveedores</h2><button class="primary" id="saveProvider">Guardar Proveedor</button></div>
-      <form class="formGrid"><input type="hidden" id="proId"><label>Nombre<input id="proNombre"></label><label>% Comisión / Deducción<input type="number" step="0.01" id="proDeduccion" value="0"></label><label>Teléfono<input id="proTelefono"></label><label>Email<input id="proEmail"></label></form>
-      <article class="panel"><div class="tableWrap"><table id="tblProveedores"></table></div></article>
+    <section id="proveedores" class="tabView hidden">
+      <div class="sectionHead"><h2>Proveedores</h2><button class="primary" id="btnSaveProvider">Guardar Proveedor</button></div>
+      <form class="cardForm" id="formProveedor">
+        <input type="hidden" id="proId">
+        <label>Nombre<input id="proNombre" required></label>
+        <label>% Deducción<input type="number" step="0.01" id="proDeduccion" value="0"></label>
+        <label>Teléfono<input id="proTelefono"></label>
+        <label>Email<input type="email" id="proEmail"></label>
+        <label>Estado<select id="proEstado"><option>Activo</option><option>Inactivo</option></select></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblProveedores"></table></div></div>
     </section>
 
-    <section id="flota" class="view hidden">
-      <div class="sectionHead"><h2>Flota</h2><button class="primary" id="saveVehicle">Guardar Vehículo</button></div>
-      <form class="formGrid"><input type="hidden" id="vehId"><label>Unidad<input id="vehUnidad"></label><label>Tablilla<input id="vehTablilla"></label><label>Marca<input id="vehMarca"></label><label>Modelo<input id="vehModelo"></label><label>Año<input id="vehAno"></label><label>VIN<input id="vehVin"></label><label>Marbete<input type="date" id="vehMarbete"></label><label>Mantenimiento<input type="date" id="vehMantenimiento"></label></form>
-      <article class="panel"><div class="tableWrap"><table id="tblVehiculos"></table></div></article>
+    <section id="flota" class="tabView hidden">
+      <div class="sectionHead"><h2>Centro de Flota</h2><button class="primary" id="btnSaveVehicle">Guardar Vehículo</button></div>
+      <form class="cardForm" id="formVehiculo">
+        <input type="hidden" id="vehId">
+        <label>Unidad<input id="vehUnidad" required></label>
+        <label>Tablilla<input id="vehTablilla"></label>
+        <label>Marca<input id="vehMarca"></label>
+        <label>Modelo<input id="vehModelo"></label>
+        <label>Año<input type="number" id="vehAno"></label>
+        <label>VIN<input id="vehVin"></label>
+        <label>Próximo mantenimiento<input type="date" id="vehMantenimiento"></label>
+        <label>Marbete<input type="date" id="vehMarbete"></label>
+        <label>Estado<select id="vehEstado"><option>Activo</option><option>Mantenimiento</option><option>Inactivo</option></select></label>
+      </form>
+      <div class="panel"><div class="tableWrap"><table id="tblVehiculos"></table></div></div>
     </section>
 
-    <section id="rutas" class="view hidden">
-      <div class="sectionHead"><h2>GPS y Rutas</h2><button class="primary" id="openMap">Abrir Ruta</button></div>
-      <form class="formGrid compact"><label>Servicio<select id="routeService"></select></label></form>
-      <article class="panel routeBox" id="routeBox">Selecciona un servicio.</article>
-    </section>
-
-    <section id="finanzas" class="view hidden">
+    <section id="finanzas" class="tabView hidden">
       <div class="kpis" id="financeKpis"></div>
       <div class="grid two">
-        <article class="panel"><h3>Registrar Pago a Chofer</h3><form class="miniForm"><label>Chofer<select id="driverPayDriver"></select></label><label>Monto<input id="driverPayAmount" type="number" step="0.01"></label><label>Método<select id="driverPayMethod"><option>ATH Móvil</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option></select></label><label>Nota<input id="driverPayNote"></label><button type="button" id="saveDriverPay">Registrar pago</button></form></article>
-        <article class="panel"><h3>Pago / Liberación de Retención</h3><form class="miniForm"><label>Chofer<select id="retPayDriver"></select></label><label>Monto<input id="retPayAmount" type="number" step="0.01"></label><label>Método<select id="retPayMethod"><option>ATH Móvil</option><option>Efectivo</option><option>Transferencia</option><option>Cheque</option></select></label><label>Nota<input id="retPayNote"></label><button type="button" id="saveRetentionPay">Pagar retención</button></form></article>
+        <article class="panel"><h2>Pagos a Choferes</h2><div id="driverPayments"></div></article>
+        <article class="panel"><h2>Deducciones Proveedores</h2><div id="providerDeductions"></div></article>
       </div>
-      <div class="grid two">
-        <article class="panel"><h3>Pagos a Choferes</h3><div class="tableWrap"><table id="tblPagosChoferes"></table></div></article>
-        <article class="panel"><h3>Retenciones</h3><div class="tableWrap"><table id="tblRetenciones"></table></div></article>
-      </div>
-      <div class="grid two">
-        <article class="panel"><h3>Proveedores</h3><div class="tableWrap"><table id="tblDeducciones"></table></div></article>
-        <article class="panel"><h3>Flujo de Caja</h3><div class="tableWrap"><table id="tblFlujo"></table></div></article>
+      <article class="panel"><h2>Flujo de Caja</h2><div class="tableWrap"><table id="tblCashflow"></table></div></article>
+    </section>
+
+    <section id="reportes" class="tabView hidden">
+      <div class="reportCards">
+        <button id="pdfExecutive">Reporte Ejecutivo PDF</button>
+        <button id="pdfServices">Listado de Servicios PDF</button>
+        <button id="exportCsv">Exportar Servicios CSV</button>
+        <button id="backupJson">Backup JSON</button>
+        <label class="importBox">Importar Backup JSON<input type="file" id="importJson" accept="application/json"></label>
       </div>
     </section>
 
-    <section id="evidencias" class="view hidden">
-      <div class="sectionHead"><h2>Documentos y Evidencias</h2><button class="primary" id="saveEvidence">Guardar Evidencia</button></div>
-      <form class="formGrid compact"><input type="hidden" id="evId"><label>Servicio<select id="evService"></select></label><label>Tipo<select id="evTipo"><option>Foto</option><option>Firma</option><option>PDF</option><option>Documento</option></select></label><label>Descripción<input id="evDesc"></label><label>Enlace<input id="evLink" placeholder="URL de archivo o foto"></label></form>
-      <article class="panel"><div class="tableWrap"><table id="tblEvidencias"></table></div></article>
-    </section>
-
-    <section id="reportes" class="view hidden">
-      <div class="reportGrid"><button id="pdfExecutive">PDF Ejecutivo</button><button id="pdfServices">PDF Servicios</button><button id="pdfInvoices">PDF Facturas</button><button id="pdfDriverPay">PDF Pagos Choferes</button><button id="pdfRetentions">PDF Retenciones</button><button id="pdfDeductions">PDF Proveedores</button><button id="pdfCashflow">PDF Flujo Caja</button><button id="exportCsv">CSV Servicios</button><button id="btnBackup">Backup JSON</button><label class="upload">Importar JSON<input type="file" id="fileImport" accept="application/json"></label></div>
-    </section>
-
-    <section id="config" class="view hidden">
-      <div class="sectionHead"><h2>Configuración</h2><button class="primary" id="saveConfig">Guardar</button></div>
-      <form class="formGrid"><label>Nombre<input id="cfgName"></label><label>Teléfono<input id="cfgPhone"></label><label>Email<input id="cfgEmail"></label><label>Dirección<input id="cfgAddress"></label><label>Tarifa por milla<input type="number" step="0.01" id="cfgRate"></label><label>IVU %<input type="number" step="0.01" id="cfgTax"></label><label>Logo<input type="file" id="cfgLogo" accept="image/*"></label></form>
+    <section id="config" class="tabView hidden">
+      <div class="sectionHead"><h2>Configuración</h2><button class="primary" id="btnSaveConfig">Guardar Configuración</button></div>
+      <form class="cardForm" id="formConfig">
+        <label>Nombre del negocio<input id="cfgName"></label>
+        <label>Teléfono<input id="cfgPhone"></label>
+        <label>Email<input type="email" id="cfgEmail"></label>
+        <label>Dirección<input id="cfgAddress"></label>
+        <label>Tarifa por milla<input type="number" step="0.01" id="cfgRate"></label>
+        <label>IVU %<input type="number" step="0.01" id="cfgTax"></label>
+        <label>Logo<input type="file" id="cfgLogo" accept="image/png,image/jpeg"></label>
+      </form>
+      <p class="muted">Datos guardados en este navegador. Para uso multi-dispositivo, el próximo salto empresarial es Firebase.</p>
     </section>
   </main>
-  <script type="module" src="app.js"></script>
+
+  <template id="emptyTemplate"><div class="empty">Sin datos todavía. Añade registros y esto prende como dashboard de verdad.</div></template>
+  <script src="app.js"></script>
 </body>
 </html>

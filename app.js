@@ -1,113 +1,192 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-const firebaseConfig = {
-  apiKey: "AIzaSyDGoSNKi1wapE1SpHxTc8wNZGGkJ2nQj7s",
-  authDomain: "nexus-transport-2887b.firebaseapp.com",
-  projectId: "nexus-transport-2887b",
-  storageBucket: "nexus-transport-2887b.firebasestorage.app",
-  messagingSenderId: "972915419764",
-  appId: "1:972915419764:web:7d61dfb03bbe56df867f21"
-};
-
+const firebaseConfig = { apiKey:"AIzaSyDGoSNKi1wapE1SpHxTc8wNZGGkJ2nQj7s", authDomain:"nexus-transport-2887b.firebaseapp.com", projectId:"nexus-transport-2887b", storageBucket:"nexus-transport-2887b.firebasestorage.app", messagingSenderId:"972915419764", appId:"1:972915419764:web:7d61dfb03bbe56df867f21" };
+const KEY = "nexus_transport_pr_v10_operational";
 const $ = id => document.getElementById(id);
-const money = n => Number(n || 0).toLocaleString("en-US", { style:"currency", currency:"USD" });
-const num = v => Number(v || 0);
+const uid = (p="id") => `${p}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`;
 const today = () => new Date().toISOString().slice(0,10);
-const uid = () => crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random());
-const esc = s => String(s ?? "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
-const byId = (arr,id) => arr.find(x => x.id === id);
-const displayName = (arr,id,f="—") => byId(arr,id)?.nombre || byId(arr,id)?.unidad || f;
+const now = () => new Date().toISOString();
+const n = v => Number(v) || 0;
+const money = v => `$${n(v).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2})}`;
+const esc = s => String(s ?? "").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+const baseState = () => ({
+  cfg:{name:"Nexus Transport PR", phone:"", email:"", mileRate:1.75, logo:""},
+  clients:[], drivers:[], providers:[], vehicles:[], services:[], invoices:[], payments:[], cashflow:[], evidence:[], driverPayouts:[], retentionReleases:[]
+});
+let state = loadLocal();
+let filters = {q:"", from:"", to:"", status:""};
+let firebase = {ready:false, db:null, user:null, ref:null, unsub:null, pulling:false};
+let saveTimer = null;
 
-let cloud = { ready:false, db:null };
-let state = {
-  cfg:{ name:"Nexus Transport PR", phone:"", email:"", address:"Puerto Rico", rate:2.25, tax:0, logo:"" },
-  clientes:[], choferes:[], proveedores:[], vehiculos:[], servicios:[], facturas:[], cobros:[], evidencias:[], cashflow:[], driverPayments:[], retentionPayments:[], providerPayments:[]
-};
-
-function setStatus(txt, ok=false){ const el=$("syncStatus"), dot=$("syncDot"); if(el) el.textContent=txt; if(dot) dot.style.background=ok?"#22c55e":"#f59e0b"; }
-function loadLocal(){ try{ const saved=JSON.parse(localStorage.getItem("nexusTransportPR")||"{}"); state={...state,...saved}; state.driverPayments ||= []; state.retentionPayments ||= []; state.providerPayments ||= []; }catch{} }
-function saveLocal(){ localStorage.setItem("nexusTransportPR", JSON.stringify(state)); }
-async function saveCloud(){ if(!cloud.ready) return; try{ await setDoc(doc(cloud.db,"apps","nexusTransportPR"), {...state, updatedAt:serverTimestamp()}); setStatus("En línea", true); }catch(e){ console.warn(e); setStatus("Local"); } }
-async function save(){ saveLocal(); renderAll(); await saveCloud(); }
-async function initFirebase(){ try{ const app=initializeApp(firebaseConfig); const auth=getAuth(app); const db=getFirestore(app); cloud.db=db; setStatus("Conectando"); await signInAnonymously(auth); await new Promise(resolve=>onAuthStateChanged(auth,u=>{ if(u) resolve(); })); cloud.ready=true; const snap=await getDoc(doc(db,"apps","nexusTransportPR")); if(snap.exists()){ state={...state,...snap.data()}; state.driverPayments ||= []; state.retentionPayments ||= []; state.providerPayments ||= []; saveLocal(); renderAll(); } setStatus("En línea", true); }catch(e){ console.warn(e); setStatus("Local"); } }
-
-function serviceTotal(s){ return num(s.base) + (num(s.millas) * num(state.cfg.rate)) + num(s.peajes); }
-function serviceExpense(s){ return num(s.gastos) + num(s.peajes); }
-function invoicePaid(inv){ return state.cobros.filter(p=>p.facturaId===inv.id).reduce((a,p)=>a+num(p.monto),0); }
-function invoiceBalance(inv){ return Math.max(0, num(inv.total)-invoicePaid(inv)); }
-function invoiceStatus(inv){ const p=invoicePaid(inv), b=invoiceBalance(inv); if(b<=0 && num(inv.total)>0) return "Pagada"; if(p>0) return "Parcial"; return "Pendiente"; }
-function filteredServices(){ const q=($("fBuscar")?.value||"").toLowerCase().trim(), d=$("fDesde")?.value||"", h=$("fHasta")?.value||"", st=$("fEstado")?.value||""; return state.servicios.filter(s=>(!d||s.fecha>=d)&&(!h||s.fecha<=h)&&(!st||s.estado===st)&&(!q||[s.numero,s.origen,s.destino,s.tipo,displayName(state.clientes,s.clienteId),displayName(state.choferes,s.choferId),displayName(state.proveedores,s.proveedorId)].join(" ").toLowerCase().includes(q))).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")); }
-function filteredInvoices(){ const q=($("fBuscar")?.value||"").toLowerCase().trim(), d=$("fDesde")?.value||"", h=$("fHasta")?.value||"", st=$("fEstado")?.value||""; return state.facturas.filter(inv=>{ const s=byId(state.servicios,inv.servicioId)||{}, status=invoiceStatus(inv); return (!d||inv.fecha>=d)&&(!h||inv.fecha<=h)&&(!st||status===st)&&(!q||[inv.numero,displayName(state.clientes,inv.clienteId),s.origen,s.destino,status].join(" ").toLowerCase().includes(q)); }).sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")); }
-
-function init(){ loadLocal(); bind(); setDefaults(); renderAll(); initFirebase(); }
-function setDefaults(){ if($("srvFecha")) $("srvFecha").value=today(); if($("payFecha")) $("payFecha").value=today(); if($("invoiceDue")) $("invoiceDue").value=today(); }
-function bind(){
-  document.querySelectorAll("[data-tab]").forEach(b=>b.onclick=()=>openTab(b.dataset.tab));
-  document.querySelectorAll("[data-open]").forEach(b=>b.onclick=()=>openTab(b.dataset.open));
-  $("btnAplicar").onclick=renderAll; $("btnLimpiar").onclick=()=>{["fDesde","fHasta","fBuscar","fEstado"].forEach(id=>$(id).value=""); renderAll();};
-  $("btnDemo").onclick=seedDemo; $("btnSync").onclick=saveCloud;
-  $("saveClient").onclick=saveClient; $("saveDriver").onclick=saveDriver; $("saveProvider").onclick=saveProvider; $("saveVehicle").onclick=saveVehicle; $("saveService").onclick=saveService;
-  $("btnInvoiceSelected").onclick=()=>createInvoice($("invoiceService").value, num($("invoiceTax").value), $("invoiceDue").value);
-  $("savePayment").onclick=savePayment; $("saveDriverPay").onclick=saveDriverPayment; $("saveRetentionPay").onclick=saveRetentionPayment;
-  $("openMap").onclick=openMap; $("routeService").onchange=routePreview; $("saveEvidence").onclick=saveEvidence; $("saveConfig").onclick=saveConfig; $("cfgLogo").onchange=readLogo;
-  $("pdfExecutive").onclick=()=>pdfReport("Reporte Ejecutivo", executiveRows()); $("pdfServices").onclick=()=>pdfReport("Servicios", servicePdfRows()); $("pdfInvoices").onclick=()=>pdfReport("Facturas", invoicePdfRows()); $("pdfDriverPay").onclick=()=>pdfReport("Pagos a Choferes", driverRows()); $("pdfRetentions").onclick=()=>pdfReport("Retenciones", retentionRows()); $("pdfDeductions").onclick=()=>pdfReport("Proveedores", providerRows()); $("pdfCashflow").onclick=()=>pdfReport("Flujo de Caja", cashRows()); $("exportCsv").onclick=exportCsv; $("btnBackup").onclick=backup; $("fileImport").onchange=importBackup;
+function loadLocal(){ try { return merge(baseState(), JSON.parse(localStorage.getItem(KEY)||"{}")); } catch { return baseState(); } }
+function merge(a,b){ return {...a,...b,cfg:{...a.cfg,...(b?.cfg||{})}}; }
+function saveLocal(){ localStorage.setItem(KEY, JSON.stringify(state)); }
+function setCloud(text, cls=""){ $("cloudStatus").textContent = text; $("cloudStatus").className = cls; }
+async function saveCloud(){
+  saveLocal();
+  if(!firebase.ready || !firebase.ref || firebase.pulling) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async()=>{
+    try{ await setDoc(firebase.ref,{state, updatedAt:serverTimestamp()}, {merge:true}); setCloud("Sincronizado", "ok"); }
+    catch(e){ console.error(e); setCloud("Firebase bloqueado / modo local", "bad"); }
+  }, 350);
 }
-function openTab(tab){ document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden")); $(tab)?.classList.remove("hidden"); document.querySelectorAll(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab)); $("pageTitle").textContent=document.querySelector(`[data-tab='${tab}']`)?.textContent||tab; renderAll(); }
-function upsert(key,obj){ const i=state[key].findIndex(x=>x.id===obj.id); i>=0?state[key][i]=obj:state[key].push(obj); }
-function clear(ids){ ids.forEach(id=>{ if($(id)) $(id).value=""; }); }
-function remove(key,id){ if(!confirm("¿Borrar registro?")) return; state[key]=state[key].filter(x=>x.id!==id); save(); }
+async function forceSync(){
+  if(!firebase.ready || !firebase.ref){ setCloud("Firebase no disponible / local", "bad"); return; }
+  try{
+    const snap = await getDoc(firebase.ref);
+    if(snap.exists() && snap.data().state) state = merge(baseState(), snap.data().state);
+    await setDoc(firebase.ref,{state, updatedAt:serverTimestamp()}, {merge:true});
+    saveLocal(); render(); setCloud("Sincronizado ahora", "ok");
+  }catch(e){ console.error(e); setCloud("No sincronizó: revisa reglas", "bad"); }
+}
+async function initFirebase(){
+  try{
+    const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app);
+    setCloud("Autenticando..."); await signInAnonymously(auth);
+    onAuthStateChanged(auth, async user => {
+      if(!user) return;
+      firebase.db=db; firebase.user=user; firebase.ref=doc(db,"users",user.uid,"apps","nexusTransportPR"); firebase.ready=true;
+      setCloud("Firebase conectado", "ok");
+      if(firebase.unsub) firebase.unsub();
+      const snap = await getDoc(firebase.ref);
+      if(snap.exists() && snap.data().state){ state = merge(baseState(), snap.data().state); saveLocal(); render(); }
+      else await setDoc(firebase.ref,{state, createdAt:serverTimestamp(), updatedAt:serverTimestamp()}, {merge:true});
+      firebase.unsub = onSnapshot(firebase.ref, s => {
+        if(!s.exists() || !s.data().state) return;
+        firebase.pulling = true;
+        state = merge(baseState(), s.data().state); saveLocal(); render();
+        firebase.pulling = false; setCloud("Sincronizado en vivo", "ok");
+      }, err => { console.error(err); setCloud("Firebase bloqueado / reglas", "bad"); });
+    });
+  }catch(e){ console.error(e); setCloud("Firebase no disponible / local", "bad"); }
+}
 
-function saveClient(){ const id=$("cliId").value||uid(); if(!$("cliNombre").value.trim()) return alert("Nombre requerido."); upsert("clientes",{id,nombre:cliNombre.value.trim(),telefono:cliTelefono.value,email:cliEmail.value,municipio:cliMunicipio.value,direccion:cliDireccion.value}); clear(["cliId","cliNombre","cliTelefono","cliEmail","cliMunicipio","cliDireccion"]); save(); }
-function saveDriver(){ const id=$("drvId").value||uid(); if(!drvNombre.value.trim()) return alert("Chofer requerido."); upsert("choferes",{id,nombre:drvNombre.value.trim(),telefono:drvTelefono.value,ganancia:num(drvGanancia.value),retencion:num(drvRetencion.value),licencia:drvLicencia.value,expira:drvExpira.value}); clear(["drvId","drvNombre","drvTelefono","drvLicencia","drvExpira"]); drvGanancia.value=50; drvRetencion.value=10; save(); }
-function saveProvider(){ const id=$("proId").value||uid(); if(!proNombre.value.trim()) return alert("Proveedor requerido."); upsert("proveedores",{id,nombre:proNombre.value.trim(),deduccion:num(proDeduccion.value),telefono:proTelefono.value,email:proEmail.value}); clear(["proId","proNombre","proTelefono","proEmail"]); proDeduccion.value=0; save(); }
-function saveVehicle(){ const id=$("vehId").value||uid(); upsert("vehiculos",{id,unidad:vehUnidad.value,tablilla:vehTablilla.value,marca:vehMarca.value,modelo:vehModelo.value,ano:vehAno.value,vin:vehVin.value,marbete:vehMarbete.value,mantenimiento:vehMantenimiento.value}); clear(["vehId","vehUnidad","vehTablilla","vehMarca","vehModelo","vehAno","vehVin","vehMarbete","vehMantenimiento"]); save(); }
-function saveService(){ const id=$("srvId").value||uid(); if(!srvCliente.value||!srvChofer.value) return alert("Cliente y chofer son requeridos."); const numero=srvNumero.value.trim()||`SRV-${String(state.servicios.length+1).padStart(5,"0")}`; const obj={id,fecha:srvFecha.value||today(),hora:srvHora.value,numero,clienteId:srvCliente.value,telefono:srvTelefono.value,origen:srvOrigen.value,destino:srvDestino.value,tipo:srvTipo.value,choferId:srvChofer.value,proveedorId:srvProveedor.value,vehiculoId:srvVehiculo.value,millas:num(srvMillas.value),base:num(srvBase.value),peajes:num(srvPeajes.value),gastos:num(srvGastos.value),estado:srvEstado.value,notas:srvNotas.value}; upsert("servicios",obj); clear(["srvId","srvHora","srvNumero","srvTelefono","srvOrigen","srvDestino","srvMillas","srvBase","srvPeajes","srvGastos","srvNotas"]); srvFecha.value=today(); srvEstado.value="Pendiente"; save(); }
-function createInvoice(serviceId,taxRate=0,due=""){ const s=byId(state.servicios,serviceId); if(!s) return alert("Selecciona un servicio válido."); if(state.facturas.some(i=>i.servicioId===serviceId)) return alert("Ese servicio ya tiene factura."); const subtotal=serviceTotal(s), tax=subtotal*num(taxRate)/100, total=subtotal+tax; const inv={id:uid(),numero:`INV-${String(state.facturas.length+1).padStart(5,"0")}`,fecha:today(),vence:due,servicioId,clienteId:s.clienteId,subtotal,taxRate:num(taxRate),tax,total,estado:"Pendiente"}; state.facturas.push(inv); s.estado="Facturado"; save(); openTab("facturas"); }
-function savePayment(){ const inv=byId(state.facturas,payInvoice.value); if(!inv) return alert("Selecciona una factura."); const amount=num(payMonto.value), bal=invoiceBalance(inv); if(amount<=0) return alert("Monto inválido."); if(amount>bal+0.01) return alert(`El cobro excede el balance: ${money(bal)}`); const p={id:payId.value||uid(),facturaId:inv.id,servicioId:inv.servicioId,clienteId:inv.clienteId,fecha:payFecha.value||today(),monto:amount,metodo:payMetodo.value,ref:payRef.value,nota:payNota.value}; upsert("cobros",p); inv.estado=invoiceStatus(inv); const s=byId(state.servicios,inv.servicioId); if(s) s.estado=inv.estado==="Pagada"?"Cobrado":"Facturado"; state.cashflow.push({id:uid(),fecha:p.fecha,tipo:"Ingreso",concepto:`Cobro ${inv.numero}`,metodo:p.metodo,monto:amount,ref:p.ref,facturaId:inv.id,clienteId:inv.clienteId}); clear(["payId","payMonto","payRef","payNota"]); payFecha.value=today(); save(); }
-function saveDriverPayment(){ const driverId=driverPayDriver.value, amount=num(driverPayAmount.value); if(!driverId||amount<=0) return alert("Selecciona chofer y monto."); const bal=driverSummary(driverId).netBalance; if(amount>bal+0.01) return alert(`El pago excede el balance neto disponible: ${money(bal)}`); const p={id:uid(),driverId,fecha:today(),monto:amount,metodo:driverPayMethod.value,nota:driverPayNote.value}; state.driverPayments.push(p); state.cashflow.push({id:uid(),fecha:p.fecha,tipo:"Egreso",concepto:`Pago chofer ${displayName(state.choferes,driverId)}`,metodo:p.metodo,monto:amount,driverId}); clear(["driverPayAmount","driverPayNote"]); save(); }
-function saveRetentionPayment(){ const driverId=retPayDriver.value, amount=num(retPayAmount.value); if(!driverId||amount<=0) return alert("Selecciona chofer y monto."); const bal=driverSummary(driverId).retentionBalance; if(amount>bal+0.01) return alert(`El pago excede la retención disponible: ${money(bal)}`); const p={id:uid(),driverId,fecha:today(),monto:amount,metodo:retPayMethod.value,nota:retPayNote.value}; state.retentionPayments.push(p); state.cashflow.push({id:uid(),fecha:p.fecha,tipo:"Egreso",concepto:`Pago retención ${displayName(state.choferes,driverId)}`,metodo:p.metodo,monto:amount,driverId}); clear(["retPayAmount","retPayNote"]); save(); }
-function saveEvidence(){ const id=evId.value||uid(); upsert("evidencias",{id,servicioId:evService.value,tipo:evTipo.value,desc:evDesc.value,link:evLink.value,fecha:today()}); clear(["evId","evDesc","evLink"]); save(); }
-function saveConfig(){ state.cfg={...state.cfg,name:cfgName.value||"Nexus Transport PR",phone:cfgPhone.value,email:cfgEmail.value,address:cfgAddress.value,rate:num(cfgRate.value),tax:num(cfgTax.value)}; save(); }
-function readLogo(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{state.cfg.logo=r.result; save();}; r.readAsDataURL(f); }
+const get = (arr,id) => arr.find(x=>x.id===id);
+const cname = id => get(state.clients,id)?.name || "—";
+const dname = id => get(state.drivers,id)?.name || "—";
+const pname = id => get(state.providers,id)?.name || "—";
+const vname = id => get(state.vehicles,id)?.unit || "—";
+const serviceTotal = s => n(s.base)+n(s.miles)*n(state.cfg.mileRate)+n(s.tolls);
+const serviceBalance = s => Math.max(0, serviceTotal(s)-n(s.paid));
+const invBalance = inv => Math.max(0, n(inv.total)-n(inv.paid));
+const activeServices = () => state.services.filter(s=>s.status!=="Cancelado");
+function filteredServices(){
+  let rows = [...state.services];
+  if(filters.from) rows = rows.filter(s=>s.date>=filters.from);
+  if(filters.to) rows = rows.filter(s=>s.date<=filters.to);
+  if(filters.status) rows = rows.filter(s=>s.status===filters.status);
+  const q = filters.q.toLowerCase().trim();
+  if(q) rows = rows.filter(s => [s.no,s.origin,s.dest,s.type,s.notes,s.status,cname(s.clientId),dname(s.driverId),pname(s.providerId)].join(" ").toLowerCase().includes(q));
+  return rows.sort((a,b)=>String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)));
+}
+function upsert(key,obj){ const i=state[key].findIndex(x=>x.id===obj.id); i>=0 ? state[key][i]=obj : state[key].push(obj); }
+function remove(key,id){ if(confirm("¿Borrar registro?")){ state[key]=state[key].filter(x=>x.id!==id); saveCloud(); render(); } }
+function nextNo(prefix, arr){ return `${prefix}-${String(arr.length+1).padStart(5,"0")}`; }
+function statusPill(s){ const cls = s==="Cobrado"||s==="Pagada"?"ok":s==="Parcial"||s==="Facturado"?"warn":s==="Cancelado"?"bad":""; return `<span class="pill ${cls}">${esc(s)}</span>`; }
+function table(el, heads, rows){ el.innerHTML=`<tr>${heads.map(h=>`<th>${h}</th>`).join("")}</tr>` + (rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${heads.length}"><div class="empty">Sin datos.</div></td></tr>`); }
+function actions(key,id, extra=""){ return `<button class="mini" data-edit="${key}:${id}">Editar</button> ${extra} <button class="mini danger" data-del="${key}:${id}">Borrar</button>`; }
+function mapUrl(s){ return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.origin||"")}&destination=${encodeURIComponent(s.dest||"")}`; }
 
-function collectedInvoices(){ return state.facturas.filter(i=>invoicePaid(i)>0); }
-function driverSummary(driverId){ const d=byId(state.choferes,driverId)||{}; let collected=0,grossPay=0,retained=0,services=0; collectedInvoices().forEach(inv=>{ const s=byId(state.servicios,inv.servicioId); if(!s||s.choferId!==driverId) return; const paid=invoicePaid(inv); collected+=paid; const base=paid*num(d.ganancia)/100; const ret=base*num(d.retencion)/100; grossPay+=base; retained+=ret; services++; }); const paidDriver=state.driverPayments.filter(p=>p.driverId===driverId).reduce((a,p)=>a+num(p.monto),0); const retPaid=state.retentionPayments.filter(p=>p.driverId===driverId).reduce((a,p)=>a+num(p.monto),0); return {services,collected,grossPay,retained,retPaid,paidDriver,netGenerated:grossPay-retained,netBalance:Math.max(0,grossPay-retained-paidDriver),retentionBalance:Math.max(0,retained-retPaid)}; }
-function providerSummary(providerId){ const p=byId(state.proveedores,providerId)||{}; let collected=0,fee=0,services=0; collectedInvoices().forEach(inv=>{ const s=byId(state.servicios,inv.servicioId); if(!s||s.proveedorId!==providerId) return; const paid=invoicePaid(inv); collected+=paid; fee+=paid*num(p.deduccion)/100; services++; }); const paid=state.providerPayments.filter(x=>x.providerId===providerId).reduce((a,x)=>a+num(x.monto),0); return {services,collected,fee,paid,balance:Math.max(0,fee-paid)}; }
+function render(){ renderBrand(); renderSelects(); renderDashboard(); renderTables(); renderFinance(); renderRules(); }
+function renderBrand(){ $("brandName").textContent=state.cfg.name || "Nexus Transport PR"; $("brandMark").innerHTML = state.cfg.logo ? `<img src="${state.cfg.logo}">` : (state.cfg.name||"NT").split(/\s+/).map(x=>x[0]).join("").slice(0,2).toUpperCase(); }
+function options(arr,label){ return `<option value="">${label}</option>` + arr.filter(x=>x.status!=="Inactivo").map(x=>`<option value="${x.id}">${esc(x.name||x.unit)}</option>`).join(""); }
+function renderSelects(){
+  ["sClient"].forEach(id=>$(id).innerHTML=options(state.clients,"Seleccionar cliente"));
+  ["sDriver","retDriver"].forEach(id=>$(id).innerHTML=options(state.drivers,"Seleccionar chofer"));
+  $("sProvider").innerHTML=options(state.providers,"Sin proveedor"); $("sVehicle").innerHTML=options(state.vehicles,"Sin vehículo");
+  const billable = state.services.filter(s=>s.status!=="Cancelado" && !state.invoices.some(i=>i.serviceId===s.id));
+  $("invoiceService").innerHTML=options(billable.map(s=>({id:s.id,name:`${s.no} · ${cname(s.clientId)} · ${money(serviceTotal(s))}`})),"Seleccionar servicio");
+  const openInv = state.invoices.filter(i=>invBalance(i)>0);
+  $("payInvoice").innerHTML=options(openInv.map(i=>({id:i.id,name:`${i.no} · ${cname(i.clientId)} · balance ${money(invBalance(i))}`})),"Seleccionar factura");
+  $("evService").innerHTML=options(state.services.map(s=>({id:s.id,name:`${s.no} · ${cname(s.clientId)}`})),"Seleccionar servicio");
+}
+function renderDashboard(){
+  const rows=filteredServices(), invoices=state.invoices, payments=state.payments;
+  const billed=invoices.reduce((a,i)=>a+n(i.total),0), paid=payments.reduce((a,p)=>a+n(p.amount),0), pending=invoices.reduce((a,i)=>a+invBalance(i),0);
+  const driverDue = driverBalances().reduce((a,d)=>a+d.payable,0), retHeld=driverBalances().reduce((a,d)=>a+d.retentionHeld,0);
+  $("dashPending").textContent=money(pending); $("dashCount").textContent=`${activeServices().length} servicios activos`;
+  $("kpis").innerHTML = [["Facturado",money(billed),"facturas emitidas"],["Cobrado",money(paid),"ingreso real"],["Pagos choferes",money(driverDue),"balance a pagar"],["Retenciones",money(retHeld),"retenido pendiente"]].map(k=>`<div class="kpi"><span>${k[0]}</span><strong>${k[1]}</strong><small>${k[2]}</small></div>`).join("");
+  table($("tblRecent"),["Fecha","Servicio","Cliente","Ruta","Estado","Total"],rows.slice(0,8).map(s=>[s.date,s.no,cname(s.clientId),`${esc(s.origin)} → ${esc(s.dest)}`,statusPill(s.status),money(serviceTotal(s))]));
+  $("driverBalances").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${esc(d.name)}</strong><br><small>Retención: ${money(d.retentionHeld)}</small></div><div><strong>${money(d.payable)}</strong><br><button class="mini" data-paydriver="${d.id}">Pagar</button></div></div>`).join("") : `<div class="empty">Sin balances.</div>`;
+}
+function renderTables(){
+  const rows=filteredServices();
+  table($("tblServices"),["Fecha","No.","Cliente","Ruta","Chofer","Total","Pagado","Balance","Estado","Acción"],rows.map(s=>[s.date,s.no,cname(s.clientId),`${esc(s.origin)} → ${esc(s.dest)}`,dname(s.driverId),money(serviceTotal(s)),money(s.paid),money(serviceBalance(s)),statusPill(s.status),actions("services",s.id,`<button class="mini" data-invoice="${s.id}">Factura</button> <a class="mini" href="${mapUrl(s)}" target="_blank">Mapa</a>`)]));
+  table($("tblClients"),["Cliente","Teléfono","Municipio","Balance","Acción"],state.clients.map(c=>[c.name,c.phone||"—",c.city||"—",money(clientBalance(c.id)),actions("clients",c.id)]));
+  table($("tblDrivers"),["Chofer","%","Ret.","A pagar","Retenido","Acción"],state.drivers.map(d=>{ const b=driverBalance(d.id); return [d.name,`${n(d.pct)}%`,`${n(d.retention)}%`,money(b.payable),money(b.retentionHeld),actions("drivers",d.id,`<button class="mini" data-paydriver="${d.id}">Pagar chofer</button>`)] }));
+  table($("tblProviders"),["Proveedor","% Deducción","Balance","Acción"],state.providers.map(p=>[p.name,`${n(p.pct)}%`,money(providerDeduction(p.id)),actions("providers",p.id)]));
+  table($("tblVehicles"),["Unidad","Tablilla","VIN","Marbete","Estado","Acción"],state.vehicles.map(v=>[v.unit,v.plate||"—",v.vin||"—",v.exp||"—",statusPill(v.status),actions("vehicles",v.id)]));
+  table($("tblRoutes"),["Servicio","Origen","Destino","Millas","Mapa"],state.services.map(s=>[s.no,s.origin||"—",s.dest||"—",n(s.miles),`<a class="mini" target="_blank" href="${mapUrl(s)}">Abrir Google Maps</a>`]));
+  table($("tblEvidence"),["Fecha","Servicio","Descripción","Archivo"],state.evidence.map(e=>[e.date,get(state.services,e.serviceId)?.no||"—",e.desc||"—",e.fileName||"—"]));
+}
+function renderFinance(){
+  table($("tblInvoices"),["Factura","Fecha","Cliente","Servicio","Total","Pagado","Balance","Estado","Acción"],state.invoices.map(i=>[i.no,i.date,cname(i.clientId),get(state.services,i.serviceId)?.no||"—",money(i.total),money(i.paid),money(invBalance(i)),statusPill(i.status),`<button class="mini" data-pdfinv="${i.id}">PDF</button>`]));
+  table($("tblPayments"),["Fecha","Factura","Cliente","Método","Monto"],state.payments.map(p=>[p.date,get(state.invoices,p.invoiceId)?.no||"—",cname(p.clientId),p.method,money(p.amount)]));
+  table($("tblRetentions"),["Chofer","Generada","Liberada/Pagada","Retenida pendiente"],driverBalances().map(d=>[d.name,money(d.retentionGenerated),money(d.retentionReleased),money(d.retentionHeld)]));
+  table($("tblDeductions"),["Proveedor","Deducción generada","Servicios"],state.providers.map(p=>[p.name,money(providerDeduction(p.id)),state.services.filter(s=>s.providerId===p.id).length]));
+  table($("tblCashflow"),["Fecha","Tipo","Categoría","Detalle","Método","Monto"],state.cashflow.sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>[x.date,x.type,x.category,x.detail||"—",x.method||"—",money(x.amount)]));
+}
+function renderRules(){ $("rulesBox").textContent = `rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /users/{userId}/{document=**} {\n      allow read, write: if request.auth != null && request.auth.uid == userId;\n    }\n    match /{document=**} { allow read, write: if false; }\n  }\n}`; }
 
-function renderAll(){ renderBrand(); renderSelects(); renderDashboard(); renderTables(); renderFinance(); loadConfig(); routePreview(); }
-function renderBrand(){ const name=state.cfg.name||"Nexus Transport PR"; brandName.textContent=name; brandMark.textContent=name.split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase(); }
-function renderSelects(){ fill("srvCliente",state.clientes,"Seleccionar cliente"); fill("srvChofer",state.choferes,"Seleccionar chofer"); fill("srvProveedor",state.proveedores,"Sin proveedor",true); fillCustom("srvVehiculo",state.vehiculos.map(v=>({...v,nombre:`${v.unidad||"Unidad"} ${v.tablilla||""}`})),x=>x.nombre,"Sin vehículo",true); fillCustom("invoiceService",state.servicios.filter(s=>!state.facturas.some(i=>i.servicioId===s.id)),s=>`${s.numero} · ${displayName(state.clientes,s.clienteId)} · ${money(serviceTotal(s))}`); invoiceTax.value=state.cfg.tax||0; fillCustom("payInvoice",state.facturas.filter(i=>invoiceBalance(i)>0),i=>`${i.numero} · ${displayName(state.clientes,i.clienteId)} · Balance ${money(invoiceBalance(i))}`); fillCustom("routeService",state.servicios,s=>`${s.numero} · ${s.origen} → ${s.destino}`); fillCustom("evService",state.servicios,s=>`${s.numero} · ${displayName(state.clientes,s.clienteId)}`); fill("driverPayDriver",state.choferes,"Seleccionar chofer"); fill("retPayDriver",state.choferes,"Seleccionar chofer"); }
-function fill(id,arr,ph,blank=true){ fillCustom(id,arr,x=>x.nombre,ph,blank); }
-function fillCustom(id,arr,textFn,ph="Seleccionar",blank=true){ const el=$(id); if(!el) return; const val=el.value; el.innerHTML=(blank?`<option value="">${esc(ph)}</option>`:"")+arr.map(x=>`<option value="${x.id}">${esc(textFn(x))}</option>`).join(""); if([...el.options].some(o=>o.value===val)) el.value=val; }
-function renderDashboard(){ const invoices=filteredInvoices(), services=filteredServices(); const billed=invoices.reduce((a,i)=>a+num(i.total),0), paid=invoices.reduce((a,i)=>a+invoicePaid(i),0), bal=invoices.reduce((a,i)=>a+invoiceBalance(i),0); const expenses=state.cashflow.filter(c=>c.tipo==="Egreso").reduce((a,c)=>a+num(c.monto),0); dashBalance.textContent=money(bal); dashOpen.textContent=`${invoices.filter(i=>invoiceBalance(i)>0).length} facturas abiertas`; kpis.innerHTML=[["Servicios",services.length],["Facturado",money(billed)],["Cobrado",money(paid)],["Neto real",money(paid-expenses)]].map(k=>`<div class="kpi"><span>${k[0]}</span><strong>${k[1]}</strong></div>`).join(""); table("tblRecent",["Fecha","Servicio","Cliente","Ruta","Total","Estado"],services.slice(0,8).map(s=>[s.fecha,esc(s.numero),esc(displayName(state.clientes,s.clienteId)),`${esc(s.origen)} → ${esc(s.destino)}`,money(serviceTotal(s)),pill(s.estado)])); renderAlerts(); }
-function renderAlerts(){ const alerts=[]; state.facturas.filter(i=>invoiceBalance(i)>0).slice(0,4).forEach(i=>alerts.push(`Factura ${i.numero} con balance ${money(invoiceBalance(i))}`)); state.choferes.forEach(d=>{ const s=driverSummary(d.id); if(s.netBalance>0) alerts.push(`Pago pendiente a ${d.nombre}: ${money(s.netBalance)}`); if(s.retentionBalance>0) alerts.push(`Retención acumulada de ${d.nombre}: ${money(s.retentionBalance)}`); }); alertsBox.innerHTML=alerts.length?alerts.slice(0,7).map(a=>`<div class="listItem">${esc(a)}</div>`).join(""):`<div class="empty">Sin alertas críticas.</div>`; }
-function renderTables(){ table("tblServicios",["Fecha","Servicio","Cliente","Ruta","Chofer","Total","Estado","Acción"],filteredServices().map(s=>[s.fecha,esc(s.numero),esc(displayName(state.clientes,s.clienteId)),`${esc(s.origen)} → ${esc(s.destino)}`,esc(displayName(state.choferes,s.choferId)),money(serviceTotal(s)),pill(s.estado),serviceActions(s)])); table("tblFacturas",["Fecha","Factura","Cliente","Total","Cobrado","Balance","Estado","Acción"],filteredInvoices().map(i=>[i.fecha,esc(i.numero),esc(displayName(state.clientes,i.clienteId)),money(i.total),money(invoicePaid(i)),money(invoiceBalance(i)),pill(invoiceStatus(i)),invoiceActions(i)])); table("tblCobros",["Fecha","Factura","Cliente","Método","Monto","Ref","Acción"],state.cobros.slice().sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).map(p=>{const i=byId(state.facturas,p.facturaId)||{};return[p.fecha,esc(i.numero||"—"),esc(displayName(state.clientes,p.clienteId)),esc(p.metodo),money(p.monto),esc(p.ref),actions("cobros",p.id)]})); table("tblClientes",["Cliente","Teléfono","Municipio","Facturado","Balance","Acción"],state.clientes.map(c=>{const inv=state.facturas.filter(i=>i.clienteId===c.id);return[esc(c.nombre),esc(c.telefono),esc(c.municipio),money(inv.reduce((a,i)=>a+i.total,0)),money(inv.reduce((a,i)=>a+invoiceBalance(i),0)),actions("clientes",c.id)]})); table("tblChoferes",["Chofer","Teléfono","% Ganancia","% Retención","Balance pago","Retención","Acción"],state.choferes.map(d=>{const s=driverSummary(d.id);return[esc(d.nombre),esc(d.telefono),`${d.ganancia}%`,`${d.retencion}%`,money(s.netBalance),money(s.retentionBalance),actions("choferes",d.id)]})); table("tblProveedores",["Proveedor","% Comisión","Teléfono","Generado","Balance","Acción"],state.proveedores.map(p=>{const s=providerSummary(p.id);return[esc(p.nombre),`${p.deduccion}%`,esc(p.telefono),money(s.fee),money(s.balance),actions("proveedores",p.id)]})); table("tblVehiculos",["Unidad","Tablilla","Marca/Modelo","VIN","Marbete","Mantenimiento","Acción"],state.vehiculos.map(v=>[esc(v.unidad),esc(v.tablilla),`${esc(v.marca)} ${esc(v.modelo)}`,esc(v.vin),esc(v.marbete),esc(v.mantenimiento),actions("vehiculos",v.id)])); table("tblEvidencias",["Fecha","Servicio","Tipo","Descripción","Enlace","Acción"],state.evidencias.map(e=>[e.fecha,byId(state.servicios,e.servicioId)?.numero||"—",esc(e.tipo),esc(e.desc),e.link?`<a target="_blank" href="${esc(e.link)}">Abrir</a>`:"—",actions("evidencias",e.id)])); bindRows(); }
-function renderFinance(){ const totalRet=state.choferes.reduce((a,d)=>a+driverSummary(d.id).retentionBalance,0), driverBal=state.choferes.reduce((a,d)=>a+driverSummary(d.id).netBalance,0), providerBal=state.proveedores.reduce((a,p)=>a+providerSummary(p.id).balance,0), cash=state.cashflow.reduce((a,c)=>a+(c.tipo==="Ingreso"?num(c.monto):-num(c.monto)),0); financeKpis.innerHTML=[["Pago chofer pendiente",money(driverBal)],["Retención pendiente",money(totalRet)],["Proveedor pendiente",money(providerBal)],["Flujo neto",money(cash)]].map(k=>`<div class="kpi"><span>${k[0]}</span><strong>${k[1]}</strong></div>`).join(""); table("tblPagosChoferes",["Chofer","Servicios","Cobrado","Base","Retenido","Pagado","Balance"],driverRows()); table("tblRetenciones",["Chofer","Retenido","Liberado/Pagado","Balance"],retentionRows()); table("tblDeducciones",["Proveedor","Servicios","Cobrado","Generado","Pagado","Balance"],providerRows()); table("tblFlujo",["Fecha","Tipo","Concepto","Método","Monto"],cashRows()); }
-function table(id,heads,rows){ const el=$(id); if(!el) return; el.innerHTML=`<thead><tr>${heads.map(h=>`<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.length?rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join("")}</tr>`).join(""):`<tr><td colspan="${heads.length}"><div class="empty">Sin datos.</div></td></tr>`}</tbody>`; }
-function pill(s){ const c=["Cobrado","Pagada"].includes(s)?"ok":["Pendiente","Parcial","Facturado"].includes(s)?"warn":s==="Cancelado"?"bad":""; return `<span class="pill ${c}">${esc(s)}</span>`; }
-function actions(k,id){ return `<div class="rowBtns"><button class="mini" data-edit="${k}:${id}">Editar</button><button class="mini danger" data-del="${k}:${id}">Borrar</button></div>`; }
-function serviceActions(s){ const inv=state.facturas.find(i=>i.servicioId===s.id); return `<div class="rowBtns"><button class="mini" data-edit="servicios:${s.id}">Editar</button>${inv?`<button class="mini" data-openinvoice="${inv.id}">Ver factura</button>`:`<button class="mini primary" data-invoice="${s.id}">Facturar</button>`}<button class="mini danger" data-del="servicios:${s.id}">Borrar</button></div>`; }
-function invoiceActions(i){ return `<div class="rowBtns"><button class="mini primary" data-pay="${i.id}">Cobrar</button><button class="mini" data-pdfinvoice="${i.id}">PDF</button><button class="mini danger" data-del="facturas:${i.id}">Borrar</button></div>`; }
-function bindRows(){ document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{const [k,id]=b.dataset.del.split(":"); remove(k,id);}); document.querySelectorAll("[data-invoice]").forEach(b=>b.onclick=()=>createInvoice(b.dataset.invoice,num(state.cfg.tax),today())); document.querySelectorAll("[data-pay]").forEach(b=>b.onclick=()=>{openTab("cobros"); payInvoice.value=b.dataset.pay; payMonto.value=invoiceBalance(byId(state.facturas,b.dataset.pay)); payFecha.value=today();}); document.querySelectorAll("[data-pdfinvoice]").forEach(b=>b.onclick=()=>pdfInvoice(b.dataset.pdfinvoice)); document.querySelectorAll("[data-openinvoice]").forEach(b=>b.onclick=()=>openTab("facturas")); document.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>editRecord(...b.dataset.edit.split(":"))); }
-function editRecord(k,id){ alert("Edición directa pendiente. Por ahora puedes borrar y crear nuevamente el registro corregido."); }
-function driverRows(){ return state.choferes.map(d=>{const s=driverSummary(d.id); return [esc(d.nombre),s.services,money(s.collected),money(s.grossPay),money(s.retained),money(s.paidDriver),money(s.netBalance)];}); }
-function retentionRows(){ return state.choferes.map(d=>{const s=driverSummary(d.id); return [esc(d.nombre),money(s.retained),money(s.retPaid),money(s.retentionBalance)];}); }
-function providerRows(){ return state.proveedores.map(p=>{const s=providerSummary(p.id); return [esc(p.nombre),s.services,money(s.collected),money(s.fee),money(s.paid),money(s.balance)];}); }
-function cashRows(){ return state.cashflow.slice().sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).map(c=>[c.fecha,esc(c.tipo),esc(c.concepto),esc(c.metodo),money(c.monto)]); }
-function executiveRows(){ const inv=state.facturas, paid=inv.reduce((a,i)=>a+invoicePaid(i),0), bal=inv.reduce((a,i)=>a+invoiceBalance(i),0), driverBal=state.choferes.reduce((a,d)=>a+driverSummary(d.id).netBalance,0), retBal=state.choferes.reduce((a,d)=>a+driverSummary(d.id).retentionBalance,0); return [["Servicios",state.servicios.length],["Facturas",inv.length],["Facturado",money(inv.reduce((a,i)=>a+i.total,0))],["Cobrado",money(paid)],["Por cobrar",money(bal)],["Pago chofer pendiente",money(driverBal)],["Retención pendiente",money(retBal)]]; }
-function servicePdfRows(){ return filteredServices().map(s=>[s.fecha,s.numero,displayName(state.clientes,s.clienteId),`${s.origen} → ${s.destino}`,money(serviceTotal(s)),s.estado]); }
-function invoicePdfRows(){ return filteredInvoices().map(i=>[i.fecha,i.numero,displayName(state.clientes,i.clienteId),money(i.total),money(invoicePaid(i)),money(invoiceBalance(i)),invoiceStatus(i)]); }
-function routePreview(){ const s=byId(state.servicios,routeService?.value); routeBox.innerHTML=s?`<strong>${esc(s.numero)}</strong><br>${esc(s.origen)} → ${esc(s.destino)}<br>Millas: ${num(s.millas)} · Total: ${money(serviceTotal(s))}`:"Selecciona un servicio."; }
-function openMap(){ const s=byId(state.servicios,routeService.value); if(!s) return alert("Selecciona un servicio."); window.open(`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(s.origen)}&destination=${encodeURIComponent(s.destino)}&travelmode=driving`,"_blank"); }
-function loadConfig(){ [["cfgName","name"],["cfgPhone","phone"],["cfgEmail","email"],["cfgAddress","address"],["cfgRate","rate"],["cfgTax","tax"]].forEach(([id,k])=>{if($(id)&&document.activeElement!==$(id)) $(id).value=state.cfg[k]??"";}); }
-function pdfBase(title){ const {jsPDF}=window.jspdf; const docp=new jsPDF({unit:"pt",format:"letter"}); const W=docp.internal.pageSize.getWidth(); docp.setFillColor(15,23,42); docp.rect(0,0,W,82,"F"); docp.setTextColor(255); docp.setFont("helvetica","bold"); docp.setFontSize(17); docp.text(state.cfg.name||"Nexus Transport PR",40,34); docp.setFontSize(10); docp.setFont("helvetica","normal"); docp.text(title,40,56); docp.setTextColor(20,32,51); return docp; }
-function pdfReport(title,rows){ const docp=pdfBase(title); let y=118; docp.setFontSize(10); rows.forEach(r=>{ if(y>735){docp.addPage();y=52;} docp.setFont("helvetica","bold"); docp.text(String(r[0]),40,y); docp.setFont("helvetica","normal"); docp.text(String(r.slice(1).join("   ")),190,y); y+=21; }); docp.save(`${title.replaceAll(" ","_")}_${today()}.pdf`); }
-function pdfInvoice(id){ const i=byId(state.facturas,id), s=i&&byId(state.servicios,i.servicioId); if(!i||!s) return; pdfReport(`Factura ${i.numero}`,[['Cliente',displayName(state.clientes,i.clienteId)],['Servicio',s.numero],['Ruta',`${s.origen} → ${s.destino}`],['Subtotal',money(i.subtotal)],['IVU',money(i.tax)],['Total',money(i.total)],['Cobrado',money(invoicePaid(i))],['Balance',money(invoiceBalance(i))],['Estado',invoiceStatus(i)]]); }
-function exportCsv(){ const rows=filteredServices().map(s=>[s.fecha,s.numero,displayName(state.clientes,s.clienteId),s.origen,s.destino,displayName(state.choferes,s.choferId),serviceTotal(s),s.estado]); const csv=[["fecha","servicio","cliente","origen","destino","chofer","total","estado"],...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n"); download("servicios.csv",csv,"text/csv"); }
-function backup(){ download(`backup_nexus_transport_${today()}.json`,JSON.stringify(state,null,2),"application/json"); }
-function importBackup(e){ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{try{state={...state,...JSON.parse(r.result)}; state.driverPayments||=[]; state.retentionPayments||=[]; state.providerPayments||=[]; save(); alert("Importado.");}catch{alert("Archivo inválido.");}}; r.readAsText(f); }
-function download(name,content,type){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
-function seedDemo(){ const c={id:uid(),nombre:"Cliente Comercial PR",telefono:"787-000-0000",municipio:"San Juan",direccion:"San Juan, PR"}; const d={id:uid(),nombre:"Carlos Rivera",telefono:"787-111-1111",ganancia:55,retencion:10,licencia:"CH-001",expira:"2026-12-31"}; const p={id:uid(),nombre:"Proveedor Metro",deduccion:8,telefono:"787-222-2222"}; const v={id:uid(),unidad:"Grúa 01",tablilla:"ABC-123",marca:"Ford",modelo:"F-550",ano:"2022",vin:"",marbete:"2026-09-30",mantenimiento:"2026-07-15"}; state.clientes.push(c); state.choferes.push(d); state.proveedores.push(p); state.vehiculos.push(v); const s={id:uid(),fecha:today(),hora:"09:00",numero:`SRV-${String(state.servicios.length+1).padStart(5,"0")}`,clienteId:c.id,telefono:c.telefono,origen:"San Juan, PR",destino:"Ponce, PR",tipo:"Grúa",choferId:d.id,proveedorId:p.id,vehiculoId:v.id,millas:75,base:150,peajes:12,gastos:35,estado:"Pendiente",notas:"Demo operacional"}; state.servicios.push(s); save(); }
-window.addEventListener("DOMContentLoaded",init);
+function clientBalance(clientId){ return state.invoices.filter(i=>i.clientId===clientId).reduce((a,i)=>a+invBalance(i),0); }
+function providerDeduction(providerId){ const p=get(state.providers,providerId); return state.payments.reduce((a,pay)=>{ const inv=get(state.invoices,pay.invoiceId); const s=inv?get(state.services,inv.serviceId):null; return s?.providerId===providerId ? a + n(pay.amount)*(n(p?.pct)/100) : a; },0); }
+function driverBalance(driverId){ return driverBalances().find(x=>x.id===driverId) || {id:driverId,name:dname(driverId),gross:0,retentionGenerated:0,retentionReleased:0,retentionHeld:0,payouts:0,payable:0}; }
+function driverBalances(){
+  return state.drivers.map(d=>{
+    let gross=0, retGen=0;
+    state.payments.forEach(pay=>{ const inv=get(state.invoices,pay.invoiceId); const s=inv?get(state.services,inv.serviceId):null; if(s?.driverId===d.id){ const driverGross=n(pay.amount)*(n(d.pct)/100); gross += driverGross; retGen += driverGross*(n(d.retention)/100); }});
+    const payouts=state.driverPayouts.filter(x=>x.driverId===d.id).reduce((a,x)=>a+n(x.amount),0);
+    const released=state.retentionReleases.filter(x=>x.driverId===d.id).reduce((a,x)=>a+n(x.amount),0);
+    const net=gross-retGen; return {id:d.id,name:d.name,gross,retentionGenerated:retGen,retentionReleased:released,retentionHeld:Math.max(0,retGen-released),payouts,payable:Math.max(0,net-payouts)};
+  }).filter(x=>x.gross||x.retentionGenerated||x.payouts||x.retentionReleased);
+}
+
+function createInvoice(serviceId){
+  const s=get(state.services,serviceId); if(!s) return alert("Servicio no encontrado");
+  let inv=state.invoices.find(i=>i.serviceId===serviceId); if(inv){ alert("Este servicio ya tiene factura"); return; }
+  inv={id:uid("inv"), no:nextNo("INV",state.invoices), date:today(), serviceId:s.id, clientId:s.clientId, total:serviceTotal(s), paid:0, status:"Pendiente", createdAt:now()};
+  state.invoices.push(inv); s.status="Facturado"; upsert("services",s); saveCloud(); render(); alert(`Factura creada: ${inv.no}`);
+}
+function registerPayment(e){ e.preventDefault(); const inv=get(state.invoices,$("payInvoice").value); if(!inv) return alert("Selecciona una factura"); const amount=n($("payAmount").value); if(amount<=0) return alert("Monto inválido");
+  const pay={id:uid("pay"), invoiceId:inv.id, clientId:inv.clientId, date:$("payDate").value||today(), method:$("payMethod").value, amount, createdAt:now()}; state.payments.push(pay);
+  inv.paid=n(inv.paid)+amount; inv.status=invBalance(inv)<=0.01?"Pagada":"Parcial"; upsert("invoices",inv);
+  const s=get(state.services,inv.serviceId); if(s){ s.paid=n(s.paid)+amount; s.status=serviceBalance(s)<=0.01?"Cobrado":"Parcial"; upsert("services",s); }
+  state.cashflow.push({id:uid("cf"), date:pay.date, type:"Ingreso", category:"Cobro factura", detail:`${inv.no} · ${cname(inv.clientId)}`, method:pay.method, amount});
+  e.target.reset(); $("payDate").value=today(); saveCloud(); render();
+}
+function payDriver(driverId){ const b=driverBalance(driverId); if(!b.payable) return alert("No hay balance neto a pagar."); const amount=n(prompt(`Balance neto de ${b.name}: ${money(b.payable)}\nMonto a pagar:`, b.payable.toFixed(2))); if(amount<=0) return;
+  const x={id:uid("dp"), driverId, date:today(), amount:Math.min(amount,b.payable), createdAt:now()}; state.driverPayouts.push(x); state.cashflow.push({id:uid("cf"), date:x.date, type:"Gasto", category:"Pago chofer", detail:b.name, method:"Operacional", amount:x.amount}); saveCloud(); render(); }
+function releaseRetention(e){ e.preventDefault(); const driverId=$("retDriver").value; if(!driverId) return alert("Selecciona chofer"); const b=driverBalance(driverId); const amount=n($("retAmount").value); if(amount<=0 || amount>b.retentionHeld) return alert("Monto inválido o mayor a retención disponible");
+  const x={id:uid("rr"), driverId, date:$("retDate").value||today(), amount, createdAt:now()}; state.retentionReleases.push(x); state.cashflow.push({id:uid("cf"), date:x.date, type:"Gasto", category:"Pago retención", detail:b.name, method:"Operacional", amount}); e.target.reset(); $("retDate").value=today(); saveCloud(); render(); }
+
+function bind(){
+  document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#tabs button").forEach(x=>x.classList.remove("active"));b.classList.add("active");document.querySelectorAll(".view").forEach(v=>v.classList.add("hidden"));$(b.dataset.view).classList.remove("hidden");render();});
+  $("btnFilter").onclick=()=>{filters={q:$("q").value,from:$("from").value,to:$("to").value,status:$("status").value};render();}; $("btnClear").onclick=()=>{["q","from","to","status"].forEach(id=>$(id).value="");filters={q:"",from:"",to:"",status:""};render();};
+  $("btnSync").onclick=forceSync; $("btnBackup").onclick=backup; $("fileImport").onchange=importBackup; $("btnDemo").onclick=seedDemo;
+  $("formClient").onsubmit=e=>{e.preventDefault(); upsert("clients",{id:$("cId").value||uid("cli"),name:$("cName").value,phone:$("cPhone").value,email:$("cEmail").value,city:$("cCity").value,address:$("cAddress").value}); e.target.reset(); saveCloud(); render();};
+  $("formDriver").onsubmit=e=>{e.preventDefault(); upsert("drivers",{id:$("dId").value||uid("drv"),name:$("dName").value,phone:$("dPhone").value,pct:n($("dPct").value),retention:n($("dRet").value),status:$("dStatus").value}); e.target.reset(); $("dPct").value=70; $("dRet").value=10; saveCloud(); render();};
+  $("formProvider").onsubmit=e=>{e.preventDefault(); upsert("providers",{id:$("pId").value||uid("prov"),name:$("pName").value,pct:n($("pPct").value),phone:$("pPhone").value,status:$("pStatus").value}); e.target.reset(); $("pPct").value=10; saveCloud(); render();};
+  $("formVehicle").onsubmit=e=>{e.preventDefault(); upsert("vehicles",{id:$("vId").value||uid("veh"),unit:$("vUnit").value,plate:$("vPlate").value,vin:$("vVin").value,exp:$("vExp").value,status:$("vStatus").value}); e.target.reset(); saveCloud(); render();};
+  $("formService").onsubmit=e=>{e.preventDefault(); const id=$("sId").value||uid("srv"); const old=get(state.services,id)||{}; upsert("services",{...old,id,no:old.no||nextNo("SRV",state.services),date:$("sDate").value||today(),clientId:$("sClient").value,driverId:$("sDriver").value,providerId:$("sProvider").value,vehicleId:$("sVehicle").value,origin:$("sOrigin").value,dest:$("sDest").value,type:$("sType").value,base:n($("sBase").value),miles:n($("sMiles").value),tolls:n($("sTolls").value),expenses:n($("sExpenses").value),paid:n(old.paid),status:$("sStatus").value,notes:$("sNotes").value,updatedAt:now()}); e.target.reset(); $("sDate").value=today(); saveCloud(); render();};
+  $("btnCreateInvoice").onclick=()=>createInvoice($("invoiceService").value); $("btnServiceInvoice").onclick=()=>$("sId").value?createInvoice($("sId").value):alert("Guarda o edita un servicio primero."); $("formPayment").onsubmit=registerPayment; $("formRetentionPay").onsubmit=releaseRetention;
+  $("formEvidence").onsubmit=e=>{e.preventDefault(); const file=$("evFile").files[0]; state.evidence.push({id:uid("ev"),date:today(),serviceId:$("evService").value,desc:$("evDesc").value,fileName:file?.name||""}); e.target.reset(); saveCloud(); render();};
+  $("formConfig").onsubmit=e=>{e.preventDefault(); state.cfg.name=$("cfgName").value||state.cfg.name; state.cfg.phone=$("cfgPhone").value; state.cfg.email=$("cfgEmail").value; state.cfg.mileRate=n($("cfgMile").value)||state.cfg.mileRate; saveCloud(); render();};
+  $("cfgLogo").onchange=e=>{const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{state.cfg.logo=r.result; saveCloud(); render();}; r.readAsDataURL(f);};
+  document.body.addEventListener("click", e=>{ const t=e.target; if(t.dataset.del){const [k,id]=t.dataset.del.split(":"); remove(k,id)} if(t.dataset.invoice) createInvoice(t.dataset.invoice); if(t.dataset.paydriver) payDriver(t.dataset.paydriver); if(t.dataset.pdfinv) pdfInvoice(t.dataset.pdfinv); if(t.dataset.edit){ editRecord(...t.dataset.edit.split(":")); }});
+  $("pdfExecutive").onclick=pdfExecutive; $("pdfDrivers").onclick=pdfDrivers; $("pdfInvoices").onclick=pdfInvoices; $("payDate").value=today(); $("retDate").value=today(); $("sDate").value=today();
+}
+function editRecord(key,id){ const x=get(state[key],id); if(!x) return; const map={clients:["cId",id,"cName",x.name,"cPhone",x.phone,"cEmail",x.email,"cCity",x.city,"cAddress",x.address,"clientes"],drivers:["dId",id,"dName",x.name,"dPhone",x.phone,"dPct",x.pct,"dRet",x.retention,"dStatus",x.status,"choferes"],providers:["pId",id,"pName",x.name,"pPct",x.pct,"pPhone",x.phone,"pStatus",x.status,"proveedores"],vehicles:["vId",id,"vUnit",x.unit,"vPlate",x.plate,"vVin",x.vin,"vExp",x.exp,"vStatus",x.status,"flota"]}; if(key==="services"){ ["sId",id,"sDate",x.date,"sClient",x.clientId,"sDriver",x.driverId,"sProvider",x.providerId,"sVehicle",x.vehicleId,"sOrigin",x.origin,"sDest",x.dest,"sType",x.type,"sBase",x.base,"sMiles",x.miles,"sTolls",x.tolls,"sExpenses",x.expenses,"sStatus",x.status,"sNotes",x.notes].forEach((v,i,a)=>{if(i%2===0)$(v).value=a[i+1]||""}); openView("servicios"); return; } const arr=map[key]; if(arr){ for(let i=0;i<arr.length-1;i+=2)$(arr[i]).value=arr[i+1]||""; openView(arr[arr.length-1]); } }
+function openView(id){ document.querySelector(`#tabs button[data-view="${id}"]`)?.click(); }
+function backup(){ const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`nexus-transport-backup-${today()}.json`; a.click(); URL.revokeObjectURL(a.href); }
+function importBackup(e){ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{try{state=merge(baseState(),JSON.parse(r.result)); saveCloud(); render(); alert("Backup importado");}catch{alert("Archivo inválido")}}; r.readAsText(f); }
+function seedDemo(){ if(state.clients.length && !confirm("Añadir datos demo sobre lo existente?")) return; const c={id:uid("cli"),name:"Cliente Demo",phone:"787-000-0000",city:"San Juan"}, d={id:uid("drv"),name:"Chofer Demo",pct:70,retention:10,status:"Activo"}, p={id:uid("prov"),name:"Proveedor Demo",pct:10,status:"Activo"}, v={id:uid("veh"),unit:"Unidad 01",plate:"ABC-123",status:"Activo"}; state.clients.push(c); state.drivers.push(d); state.providers.push(p); state.vehicles.push(v); state.services.push({id:uid("srv"),no:nextNo("SRV",state.services),date:today(),clientId:c.id,driverId:d.id,providerId:p.id,vehicleId:v.id,origin:"San Juan",dest:"Ponce",type:"Grua",base:250,miles:75,tolls:12,expenses:35,paid:0,status:"Pendiente",notes:"Servicio demo"}); saveCloud(); render(); }
+function pdf(title, rows){ const {jsPDF}=window.jspdf; const docp=new jsPDF(); docp.setFont("helvetica","bold"); docp.setFontSize(18); docp.text(title,14,18); docp.setFont("helvetica","normal"); docp.setFontSize(10); let y=30; rows.forEach(r=>{ if(y>280){docp.addPage(); y=18;} docp.text(String(r),14,y); y+=7; }); docp.save(`${title.replaceAll(" ","_")}_${today()}.pdf`); }
+function pdfExecutive(){ pdf("Reporte Ejecutivo Nexus Transport", [`Facturado: ${money(state.invoices.reduce((a,i)=>a+n(i.total),0))}`,`Cobrado: ${money(state.payments.reduce((a,p)=>a+n(p.amount),0))}`,`Pendiente: ${money(state.invoices.reduce((a,i)=>a+invBalance(i),0))}`,`Servicios: ${state.services.length}`,`Choferes: ${state.drivers.length}`]); }
+function pdfDrivers(){ pdf("Reporte Choferes", driverBalances().map(d=>`${d.name} | A pagar ${money(d.payable)} | Retenido ${money(d.retentionHeld)} | Bruto ${money(d.gross)}`)); }
+function pdfInvoices(){ pdf("Reporte Facturacion", state.invoices.map(i=>`${i.no} | ${cname(i.clientId)} | Total ${money(i.total)} | Pagado ${money(i.paid)} | Balance ${money(invBalance(i))}`)); }
+function pdfInvoice(id){ const i=get(state.invoices,id); if(!i)return; pdf(`Factura ${i.no}`,[state.cfg.name,`Cliente: ${cname(i.clientId)}`,`Fecha: ${i.date}`,`Servicio: ${get(state.services,i.serviceId)?.no||""}`,`Total: ${money(i.total)}`,`Pagado: ${money(i.paid)}`,`Balance: ${money(invBalance(i))}`]); }
+
+bind(); render(); initFirebase();
