@@ -8,47 +8,70 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <div class="mark">NT</div>
-      <div><strong>Nexus Transport PR</strong><span>Operación · facturación · cobros · choferes</span></div>
-    </div>
-    <div class="top-actions">
-      <span id="syncBadge" class="badge warn">Conectando...</span>
-      <button id="btnSync" class="btn secondary">Sincronizar</button>
-      <button id="btnPdfExec" class="btn primary">PDF Ejecutivo</button>
-    </div>
-  </header>
+  <div class="app-shell">
+    <aside id="sidebar" class="sidebar" aria-label="Menú principal">
+      <div class="side-brand">
+        <div class="mark">NT</div>
+        <div>
+          <strong>Nexus Transport PR</strong>
+          <span>Centro operacional</span>
+        </div>
+      </div>
 
-  <nav id="tabs" class="tabs">
-    <button class="active" data-view="dashboard">Dashboard</button>
-    <button data-view="clientes">Clientes</button>
-    <button data-view="choferes">Choferes</button>
-    <button data-view="proveedores">Proveedores</button>
-    <button data-view="flota">Flota</button>
-    <button data-view="servicios">Servicios</button>
-    <button data-view="facturacion">Facturación</button>
-    <button data-view="cobros">Cobros</button>
-    <button data-view="pagos">Pagos</button>
-    <button data-view="reportes">Reportes</button>
-    <button data-view="config">Config</button>
-  </nav>
+      <nav id="tabs" class="side-nav">
+        <button class="active" data-view="dashboard"><span>Panel</span><small>Dashboard ejecutivo</small></button>
+        <button data-view="clientes"><span>Clientes</span><small>Cuentas y contactos</small></button>
+        <button data-view="choferes"><span>Choferes</span><small>Pagos y retenciones</small></button>
+        <button data-view="proveedores"><span>Proveedores</span><small>Deducciones</small></button>
+        <button data-view="flota"><span>Flota</span><small>Unidades y marbetes</small></button>
+        <button data-view="servicios"><span>Servicios</span><small>Órdenes y rutas</small></button>
+        <button data-view="facturacion"><span>Facturación</span><small>Crear y descargar</small></button>
+        <button data-view="cobros"><span>Cobros</span><small>ATH, cash y bancos</small></button>
+        <button data-view="pagos"><span>Pagos</span><small>Caja y choferes</small></button>
+        <button data-view="reportes"><span>Reportes</span><small>PDF, CSV y backup</small></button>
+        <button data-view="config"><span>Config</span><small>Empresa y sistema</small></button>
+      </nav>
 
-  <section class="filters">
-    <input id="q" placeholder="Buscar cliente, chofer, factura, ruta..." />
-    <input id="from" type="date" />
-    <input id="to" type="date" />
-    <select id="statusFilter"><option value="">Todos los estados</option><option>Pendiente</option><option>Facturado</option><option>Parcial</option><option>Cobrado</option><option>Cancelado</option></select>
-    <button id="btnFilter" class="btn secondary">Aplicar</button>
-    <button id="btnClear" class="btn ghost">Limpiar</button>
-  </section>
+      <div class="side-footer">
+        <span id="syncBadge" class="badge warn">Conectando...</span>
+        <button id="btnSync" class="btn secondary full">Sincronizar</button>
+      </div>
+    </aside>
 
-  <main>
+    <div id="sidebarOverlay" class="sidebar-overlay"></div>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="top-left">
+          <button id="menuToggle" class="icon-btn" aria-label="Abrir menú">☰</button>
+          <div>
+            <strong id="pageTitle">Dashboard</strong>
+            <span>Operación · facturación · cobros · choferes</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" data-go="servicios">Nuevo Servicio</button>
+          <button id="btnPdfExec" class="btn primary">PDF Ejecutivo</button>
+        </div>
+      </header>
+
+      <section class="filters">
+        <input id="q" placeholder="Buscar cliente, chofer, factura, ruta..." />
+        <input id="from" type="date" />
+        <input id="to" type="date" />
+        <select id="statusFilter"><option value="">Todos los estados</option><option>Pendiente</option><option>Facturado</option><option>Parcial</option><option>Cobrado</option><option>Cancelado</option></select>
+        <button id="btnFilter" class="btn secondary">Aplicar</button>
+        <button id="btnClear" class="btn ghost">Limpiar</button>
+      </section>
+
+      <main>
+
     <section id="dashboard" class="view">
       <div class="hero">
         <div><p class="eyebrow">Centro ejecutivo</p><h1>Operación lista para cobrar, pagar y cerrar semana.</h1><p class="muted">El flujo trabaja completo: servicio → factura → cobro → caja → pago a chofer → retención.</p></div>
         <div class="hero-card"><span>Balance por cobrar</span><strong id="heroBalance">$0.00</strong><small id="heroOpen">0 facturas abiertas</small></div>
       </div>
+      <div class="quick-actions"><button class="soft-action" data-go="servicios">+ Nuevo servicio</button><button class="soft-action" data-go="facturacion">Generar factura</button><button class="soft-action" data-go="cobros">Registrar cobro</button><button class="soft-action" data-go="pagos">Ver pagos</button></div>
       <div id="kpis" class="kpis"></div>
       <div class="grid2">
         <article class="panel"><h2>Servicios recientes</h2><div class="table-wrap"><table id="tblRecent"></table></div></article>
@@ -117,7 +140,10 @@
       <form id="formConfig" class="form"><label>Negocio<input id="cfgName"></label><label>Teléfono<input id="cfgPhone"></label><label>Email<input id="cfgEmail"></label><label>Tarifa por milla<input id="cfgMile" type="number" step="0.01"></label></form>
       <div class="panel muted"><p>Estado del sistema: <strong id="systemState">Inicializando</strong></p></div>
     </section>
-  </main>
+  
+      </main>
+    </div>
+  </div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
