@@ -8,7 +8,24 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
-  <div class="app-shell">
+  <section id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-logo">NT</div>
+      <h1>Nexus Transport PR</h1>
+      <p>Acceso privado. Cada usuario maneja su propia base de datos en la nube.</p>
+      <label>Nombre de empresa o usuario<input id="authName" placeholder="Opcional"></label>
+      <label>Email<input id="authEmail" type="email" autocomplete="email" placeholder="usuario@empresa.com"></label>
+      <label>Contraseña<input id="authPassword" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres"></label>
+      <div class="auth-actions">
+        <button id="btnLogin" class="btn primary" type="button">Entrar</button>
+        <button id="btnRegister" class="btn secondary" type="button">Crear cuenta</button>
+      </div>
+      <button id="btnResetPass" class="link-btn" type="button">Recuperar contraseña</button>
+      <div id="authMsg" class="auth-msg"></div>
+    </div>
+  </section>
+
+  <div id="appShell" class="app-shell hidden">
     <aside id="sidebar" class="sidebar" aria-label="Menú principal">
       <div class="side-brand">
         <div class="mark">NT</div>
@@ -34,6 +51,7 @@
 
       <div class="side-footer">
         <span id="syncBadge" class="badge warn">Conectando...</span>
+        <small id="sideUserEmail" class="side-user">—</small>
         <button id="btnSync" class="btn secondary full">Sincronizar</button>
       </div>
     </aside>
@@ -51,6 +69,8 @@
         </div>
         <div class="top-actions">
           <button class="btn ghost" data-go="servicios">Nuevo Servicio</button>
+          <span id="userEmail" class="user-pill">—</span>
+          <button id="btnLogout" class="btn ghost">Salir</button>
           <button id="btnPdfExec" class="btn primary">PDF Ejecutivo</button>
         </div>
       </header>

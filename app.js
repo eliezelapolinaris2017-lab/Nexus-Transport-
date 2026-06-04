@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail, updateProfile } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -25,6 +25,8 @@ let cloudRef = null;
 let unsubscribe = null;
 let saving = false;
 let cloudReady = false;
+let auth = null;
+let currentUser = null;
 
 function freshState() {
   return {
@@ -75,22 +77,89 @@ function normalizeOperationalState(data) {
   });
   return data;
 }
+function localKey() { return currentUser?.uid ? `nexusTransportState_${currentUser.uid}` : "nexusTransportState_guest"; }
 function localLoad() {
-  try { state = mergeState(JSON.parse(localStorage.getItem("nexusTransportState") || "null")); } catch { state = freshState(); }
+  try { state = mergeState(JSON.parse(localStorage.getItem(localKey()) || "null")); } catch { state = freshState(); }
 }
-function localSave() { localStorage.setItem("nexusTransportState", JSON.stringify(state)); }
+function localSave() { localStorage.setItem(localKey(), JSON.stringify(state)); }
 function setBadge(text, cls = "warn") { const b = $("syncBadge"); if (!b) return; b.className = `badge ${cls}`; b.textContent = text; $("systemState") && ($("systemState").textContent = text); }
+
+function showApp(isAuthed) {
+  const authScreen = $("authScreen");
+  const appShell = $("appShell");
+  if (authScreen) authScreen.classList.toggle("hidden", !!isAuthed);
+  if (appShell) appShell.classList.toggle("hidden", !isAuthed);
+}
+function setAuthMsg(text, cls = "") {
+  const el = $("authMsg");
+  if (!el) return;
+  el.textContent = text || "";
+  el.className = cls ? `auth-msg ${cls}` : "auth-msg";
+}
+function setUserUI(user) {
+  const email = user?.email || "Usuario";
+  if ($("userEmail")) $("userEmail").textContent = email;
+  if ($("sideUserEmail")) $("sideUserEmail").textContent = email;
+}
+async function handleAuth(mode) {
+  const email = ($("authEmail")?.value || "").trim();
+  const password = $("authPassword")?.value || "";
+  const name = ($("authName")?.value || "").trim();
+  if (!email || !password) return setAuthMsg("Escribe email y contraseña.", "bad");
+  if (password.length < 6) return setAuthMsg("La contraseña debe tener mínimo 6 caracteres.", "bad");
+  try {
+    setAuthMsg(mode === "register" ? "Creando cuenta..." : "Entrando...", "");
+    if (mode === "register") {
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      if (name) await updateProfile(cred.user, { displayName: name });
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+  } catch (err) {
+    console.error(err);
+    const code = String(err?.code || "");
+    const msg = code.includes("email-already-in-use") ? "Ese email ya tiene cuenta. Usa Entrar." :
+      code.includes("invalid-credential") || code.includes("wrong-password") ? "Email o contraseña incorrectos." :
+      code.includes("user-not-found") ? "No existe cuenta con ese email." :
+      code.includes("operation-not-allowed") ? "Activa Email/Password en Firebase Authentication." :
+      "No se pudo autenticar. Revisa Firebase Auth.";
+    setAuthMsg(msg, "bad");
+  }
+}
+async function logout() {
+  try { await signOut(auth); setBadge("Sesión cerrada", "warn"); } catch (err) { console.error(err); }
+}
+async function resetPassword() {
+  const email = ($("authEmail")?.value || "").trim();
+  if (!email) return setAuthMsg("Escribe tu email para enviar recuperación.", "bad");
+  try { await sendPasswordResetEmail(auth, email); setAuthMsg("Correo de recuperación enviado.", "ok"); }
+  catch (err) { console.error(err); setAuthMsg("No se pudo enviar recuperación.", "bad"); }
+}
+
 async function initFirebase() {
-  localLoad(); render();
+  showApp(false);
   try {
     const app = initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    auth = getAuth(app);
     db = getFirestore(app);
-    setBadge("Autenticando", "warn");
-    await signInAnonymously(auth);
     onAuthStateChanged(auth, async user => {
-      if (!user) return;
-      cloudRef = doc(db, "nexusTransport", "main");
+      currentUser = user || null;
+      if (!user) {
+        cloudReady = false;
+        cloudRef = null;
+        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        state = freshState();
+        showApp(false);
+        setAuthMsg("Inicia sesión o crea una cuenta para cargar tus datos.", "");
+        return;
+      }
+      showApp(true);
+      setUserUI(user);
+      setBadge("Conectando", "warn");
+      localLoad();
+      render();
+      // Cada usuario escribe y lee SOLO su propio documento.
+      cloudRef = doc(db, "users", user.uid, "nexusTransport", "main");
       cloudReady = true;
       await pullCloud();
       listenCloud();
@@ -99,7 +168,8 @@ async function initFirebase() {
   } catch (err) {
     console.error("Firebase no disponible", err);
     cloudReady = false;
-    setBadge("Modo local", "warn");
+    showApp(false);
+    setAuthMsg("Firebase no disponible. Verifica configuración y dominio autorizado.", "bad");
   }
 }
 async function pullCloud() {
@@ -441,9 +511,14 @@ function bind() {
   document.querySelectorAll("#tabs button").forEach(btn => btn.addEventListener("click", () => openView(btn.dataset.view)));
   $("menuToggle")?.addEventListener("click", () => { $("sidebar")?.classList.add("open"); $("sidebarOverlay")?.classList.add("open"); });
   $("sidebarOverlay")?.addEventListener("click", () => { $("sidebar")?.classList.remove("open"); $("sidebarOverlay")?.classList.remove("open"); });
+  $("btnLogin")?.addEventListener("click", () => handleAuth("login"));
+  $("btnRegister")?.addEventListener("click", () => handleAuth("register"));
+  $("btnResetPass")?.addEventListener("click", resetPassword);
+  $("btnLogout")?.addEventListener("click", logout);
+  $("authPassword")?.addEventListener("keydown", e => { if (e.key === "Enter") handleAuth("login"); });
   $("btnFilter").onclick = () => { filters = { q: $("q").value.trim(), from: $("from").value, to: $("to").value, status: $("statusFilter").value }; render(); };
   $("btnClear").onclick = () => { ["q","from","to","statusFilter"].forEach(id=>$(id).value=""); filters = { q:"", from:"", to:"", status:"" }; render(); };
-  $("btnSync").onclick = async () => { await pullCloud(); await pushCloud(); alert("Sincronización ejecutada."); };
+  $("btnSync").onclick = async () => { if(!currentUser) return alert("Inicia sesión primero."); await pullCloud(); await pushCloud(); alert("Sincronización ejecutada."); };
   fillPRPlaces();
   ["sOrigin","sDest"].forEach(id => $(id)?.addEventListener("input", () => updateRouteEstimate(false)));
   $("btnOpenCurrentRoute")?.addEventListener("click", () => openMapForRoute($("sOrigin")?.value || "", $("sDest")?.value || ""));
