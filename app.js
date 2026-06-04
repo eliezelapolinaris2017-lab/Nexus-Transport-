@@ -28,7 +28,7 @@ let cloudReady = false;
 
 function freshState() {
   return {
-    cfg: { name: "Nexus Transport PR", phone: "", email: "", mileRate: 2.25 },
+    cfg: { name: "Nexus Transport PR", address: "", phone: "", email: "", web: "", taxId: "", repName: "", logoDataUrl: "", mileRate: 2.25, taxRate: 0 },
     clients: [], drivers: [], providers: [], vehicles: [], services: [], invoices: [], payments: [], cashflow: [], driverPayouts: [], retentionPayments: [], evidence: []
   };
 }
@@ -262,7 +262,19 @@ function renderTables() {
 function renderFinance() {
   $("driverPayments").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${escapeHtml(d.name)}</strong><span>${d.services} servicios por ID · Bruto ${money(d.gross)} · Retención ${money(d.heldRetention)} · Pagado ${money(d.paidOut)}</span></div><button class="miniBtn" data-paydriver="${d.id}">Pagar ${money(d.payable)}</button></div>`).join("") : `<p class="muted">Sin balances.</p>`;
 }
-function renderConfig() { $("cfgName").value = state.cfg.name || ""; $("cfgPhone").value = state.cfg.phone || ""; $("cfgEmail").value = state.cfg.email || ""; $("cfgMile").value = state.cfg.mileRate || 0; }
+function renderConfig() {
+  $("cfgName") && ($("cfgName").value = state.cfg.name || "");
+  $("cfgAddress") && ($("cfgAddress").value = state.cfg.address || "");
+  $("cfgPhone") && ($("cfgPhone").value = state.cfg.phone || "");
+  $("cfgEmail") && ($("cfgEmail").value = state.cfg.email || "");
+  $("cfgWeb") && ($("cfgWeb").value = state.cfg.web || "");
+  $("cfgTaxId") && ($("cfgTaxId").value = state.cfg.taxId || "");
+  $("cfgRep") && ($("cfgRep").value = state.cfg.repName || "");
+  $("cfgTaxRate") && ($("cfgTaxRate").value = state.cfg.taxRate || 0);
+  $("cfgMile") && ($("cfgMile").value = state.cfg.mileRate || 0);
+  const prev = $("logoPreview");
+  if (prev) prev.innerHTML = state.cfg.logoDataUrl ? `<img src="${state.cfg.logoDataUrl}" alt="Logo empresa">` : "Sin logo cargado";
+}
 function mapUrl(origin, dest) { return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin||"")}&destination=${encodeURIComponent(dest||"")}`; }
 function openMapForRoute(origin, dest) {
   if (!origin || !dest) return alert("Escribe origen y destino para abrir la ruta.");
@@ -447,7 +459,29 @@ function bind() {
   $("formRetention").onsubmit = payRetention;
   $("formCashflow").onsubmit = saveCashflow;
   $("btnClearCashflow").onclick = clearCashflowForm;
-  $("formConfig").onsubmit = e => { e.preventDefault(); state.cfg = { ...state.cfg, name: $("cfgName").value, phone: $("cfgPhone").value, email: $("cfgEmail").value, mileRate: num($("cfgMile").value) }; save(); };
+  $("formConfig").onsubmit = e => {
+    e.preventDefault();
+    state.cfg = {
+      ...state.cfg,
+      name: $("cfgName")?.value || "",
+      address: $("cfgAddress")?.value || "",
+      phone: $("cfgPhone")?.value || "",
+      email: $("cfgEmail")?.value || "",
+      web: $("cfgWeb")?.value || "",
+      taxId: $("cfgTaxId")?.value || "",
+      repName: $("cfgRep")?.value || "",
+      taxRate: num($("cfgTaxRate")?.value),
+      mileRate: num($("cfgMile")?.value)
+    };
+    save();
+  };
+  $("cfgLogo") && ($("cfgLogo").onchange = e => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { state.cfg.logoDataUrl = String(reader.result || ""); save(); };
+    reader.readAsDataURL(file);
+  });
+  $("btnRemoveLogo") && ($("btnRemoveLogo").onclick = () => { state.cfg.logoDataUrl = ""; save(); });
   document.body.addEventListener("click", e => { const t = e.target.closest("button"); if (!t) return; if (t.dataset.del) { const [key,id] = t.dataset.del.split(":"); remove(key,id); } if (t.dataset.edit) { const [key,id] = t.dataset.edit.split(":"); edit(key,id); } if (t.dataset.invoice) createInvoice(t.dataset.invoice); if (t.dataset.paydriver) payDriver(t.dataset.paydriver); if (t.dataset.pdfinv) pdfInvoice(t.dataset.pdfinv); if (t.dataset.map) { const s = find(state.services, t.dataset.map); if (s) openMapForRoute(s.origin, s.dest); } if (t.dataset.miles) confirmRealMiles(t.dataset.miles); if (t.dataset.go) openView(t.dataset.go); });
   $("btnPdfExec").onclick = pdfExecutive; $("btnBackup").onclick = backup; $("fileImport").onchange = importBackup; $("btnDemo").onclick = seedDemo; $("pdfInvoices").onclick = pdfInvoices; $("pdfDrivers").onclick = pdfDrivers; $("exportCsv").onclick = exportCsv;
   $("btnResetSystem") && ($("btnResetSystem").onclick = resetSystem);
@@ -459,11 +493,106 @@ function backup() { const blob = new Blob([JSON.stringify(state,null,2)], {type:
 function importBackup(e) { const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{ try{ state = mergeState(JSON.parse(r.result)); save(); alert("Backup importado."); }catch{ alert("Archivo inválido."); } }; r.readAsText(f); }
 function seedDemo() { const c={id:uid("cli"),name:"Cliente Demo",phone:"787-000-0000",city:"San Juan"}; const d={id:uid("drv"),name:"Chofer Demo",phone:"787-000-0001",pct:70,retention:10,status:"Activo"}; const p={id:uid("prov"),name:"Proveedor Demo",pct:10,status:"Activo"}; const v={id:uid("veh"),unit:"Unidad 01",plate:"ABC-123",status:"Activo"}; state.clients.push(c); state.drivers.push(d); state.providers.push(p); state.vehicles.push(v); state.services.push({id:uid("srv"),no:nextNo("SRV",state.services),date:today(),clientId:c.id,driverId:d.id,providerId:p.id,vehicleId:v.id,origin:"San Juan",dest:"Ponce",type:"Grúa",base:250,miles:74.8,routeAuto:true,tolls:12,expenses:35,status:"Pendiente",notes:"Servicio demo"}); save(); }
 function exportCsv() { const rows = [["fecha","servicio","cliente","chofer","origen","destino","total","estado"], ...state.services.map(s=>[s.date,s.no,clientName(s.clientId),driverName(s.driverId),s.origin,s.dest,serviceTotal(s),s.status])]; const csv = rows.map(r=>r.map(v=>`"${String(v??"").replaceAll('"','""')}"`).join(",")).join("\n"); const blob=new Blob([csv],{type:"text/csv"}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`servicios-${today()}.csv`; a.click(); URL.revokeObjectURL(a.href); }
-function pdf(title, lines) { const { jsPDF } = window.jspdf; const docp = new jsPDF(); docp.setFont("helvetica","bold"); docp.setFontSize(17); docp.text(title,14,18); docp.setFont("helvetica","normal"); docp.setFontSize(10); let y=32; lines.forEach(line=>{ if(y>280){docp.addPage(); y=18;} docp.text(String(line),14,y); y+=7; }); docp.save(`${title.replaceAll(" ","_")}_${today()}.pdf`); }
-function pdfExecutive() { const billed=state.invoices.reduce((a,i)=>a+num(i.total),0), paid=state.payments.reduce((a,p)=>a+num(p.amount),0), pending=state.invoices.reduce((a,i)=>a+invBalance(i),0); pdf("Reporte Ejecutivo", [`Negocio: ${state.cfg.name}`,`Facturado: ${money(billed)}`,`Cobrado: ${money(paid)}`,`Por cobrar: ${money(pending)}`,`Servicios: ${state.services.length}`,`Facturas: ${state.invoices.length}`]); }
-function pdfInvoices() { pdf("Reporte Facturas", state.invoices.map(i=>`${i.no} | ${clientName(i.clientId)} | Total ${money(i.total)} | Pagado ${money(i.paid)} | Balance ${money(invBalance(i))}`)); }
-function pdfDrivers() { pdf("Reporte Choferes", driverBalances().map(d=>`${d.name} | Bruto ${money(d.gross)} | Neto a pagar ${money(d.payable)} | Retenido ${money(d.heldRetention)}`)); }
-function pdfInvoice(id) { const i=find(state.invoices,id); if(!i)return; pdf(`Factura ${i.no}`,[state.cfg.name,`Cliente: ${clientName(i.clientId)}`,`Fecha: ${i.date}`,`Total: ${money(i.total)}`,`Pagado: ${money(i.paid)}`,`Balance: ${money(invBalance(i))}`]); }
+function pdfSafeName(text) { return String(text || "documento").replace(/[^a-z0-9_-]+/gi, "_").slice(0, 80); }
+function pdfMoneyValue(n) { return Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function addPdfHeader(docp, title, subtitle = "") {
+  const cfg = state.cfg || {};
+  const W = docp.internal.pageSize.getWidth();
+  let y = 16;
+  if (cfg.logoDataUrl) {
+    try {
+      const type = String(cfg.logoDataUrl).includes("image/png") ? "PNG" : "JPEG";
+      docp.addImage(cfg.logoDataUrl, type, (W - 34) / 2, y, 34, 34);
+      y += 40;
+    } catch (err) { console.warn("Logo PDF omitido", err); }
+  }
+  docp.setFont("helvetica", "bold");
+  docp.setFontSize(15);
+  docp.text((cfg.name || "Nexus Transport PR").toUpperCase(), W / 2, y, { align: "center" });
+  y += 6;
+  docp.setFont("helvetica", "normal");
+  docp.setFontSize(8.5);
+  [cfg.address, cfg.phone ? `Tel: ${cfg.phone}` : "", cfg.email, cfg.web, cfg.taxId ? `Reg./ID: ${cfg.taxId}` : ""].filter(Boolean).forEach(line => {
+    docp.text(String(line), W / 2, y, { align: "center" }); y += 4.5;
+  });
+  y += 3;
+  docp.setDrawColor(25, 55, 95); docp.setLineWidth(.5); docp.line(16, y, W - 16, y); y += 9;
+  docp.setFont("helvetica", "bold"); docp.setFontSize(13); docp.text(title.toUpperCase(), W / 2, y, { align: "center" }); y += 6;
+  if (subtitle) { docp.setFont("helvetica", "normal"); docp.setFontSize(9); docp.text(subtitle, W / 2, y, { align: "center" }); y += 6; }
+  return y + 2;
+}
+function addFooter(docp) {
+  const pages = docp.internal.getNumberOfPages();
+  const W = docp.internal.pageSize.getWidth();
+  const H = docp.internal.pageSize.getHeight();
+  for (let i = 1; i <= pages; i++) {
+    docp.setPage(i); docp.setFont("helvetica", "normal"); docp.setFontSize(8); docp.setTextColor(90);
+    docp.line(16, H - 18, W - 16, H - 18);
+    docp.text("Documento generado automáticamente por Nexus Transport PR", 16, H - 10);
+    docp.text(`Página ${i} de ${pages}`, W - 16, H - 10, { align: "right" });
+    docp.setTextColor(0);
+  }
+}
+function ensureSpace(docp, y, needed = 20) { if (y + needed > 275) { docp.addPage(); return 20; } return y; }
+function pdfTable(docp, headers, rows, x, y, widths) {
+  docp.setFontSize(8); docp.setFont("helvetica", "bold"); docp.setFillColor(235, 240, 247); docp.rect(x, y - 5, widths.reduce((a,b)=>a+b,0), 8, "F");
+  let cx = x; headers.forEach((h,i)=>{ docp.text(String(h), cx + 1.5, y); cx += widths[i]; }); y += 6;
+  docp.setFont("helvetica", "normal");
+  rows.forEach(row => { y = ensureSpace(docp, y, 12); cx = x; row.forEach((cell,i)=>{ const txt = docp.splitTextToSize(String(cell ?? ""), widths[i] - 3).slice(0,2); docp.text(txt, cx + 1.5, y); cx += widths[i]; }); docp.setDrawColor(230); docp.line(x, y + 2, x + widths.reduce((a,b)=>a+b,0), y + 2); y += 8; });
+  return y;
+}
+function pdfExecutive() {
+  const { jsPDF } = window.jspdf; const docp = new jsPDF({ unit:"mm", format:"letter" });
+  let y = addPdfHeader(docp, "Reporte Ejecutivo", `Fecha: ${today()}`);
+  const billed=state.invoices.reduce((a,i)=>a+num(i.total),0), paid=state.payments.reduce((a,p)=>a+num(p.amount),0), pending=state.invoices.reduce((a,i)=>a+invBalance(i),0);
+  const driverDue = driverBalances().reduce((a,d)=>a+num(d.payable),0), held = driverBalances().reduce((a,d)=>a+num(d.heldRetention),0);
+  y = pdfTable(docp, ["Concepto", "Total"], [["Servicios", state.services.length],["Facturas", state.invoices.length],["Facturado", `$${pdfMoneyValue(billed)}`],["Cobrado", `$${pdfMoneyValue(paid)}`],["Por cobrar", `$${pdfMoneyValue(pending)}`],["A pagar choferes", `$${pdfMoneyValue(driverDue)}`],["Retenciones retenidas", `$${pdfMoneyValue(held)}`]], 28, y, [90, 55]);
+  y += 8; docp.setFont("helvetica","bold"); docp.setFontSize(10); docp.text("Servicios recientes", 16, y); y += 7;
+  const rows = filteredServices().slice(0, 20).map(s=>[s.no, clientName(s.clientId), driverName(s.driverId), `${s.origin} → ${s.dest}`, `${num(s.miles).toFixed(2)} mi`, money(serviceTotal(s)), s.status]);
+  pdfTable(docp, ["Servicio","Cliente","Chofer","Ruta","Millas","Total","Estado"], rows, 10, y, [21,28,28,45,18,24,22]);
+  addFooter(docp); docp.save(`Reporte_Ejecutivo_${today()}.pdf`);
+}
+function pdfInvoices() {
+  const { jsPDF } = window.jspdf; const docp = new jsPDF({ unit:"mm", format:"letter" });
+  let y = addPdfHeader(docp, "Reporte de Facturas", `Fecha: ${today()}`);
+  const rows = state.invoices.map(i=>[i.no, i.date, clientName(i.clientId), find(state.services,i.serviceId)?.no || "", money(i.total), money(i.paid), money(invBalance(i)), i.status]);
+  pdfTable(docp, ["Factura","Fecha","Cliente","Servicio","Total","Pagado","Balance","Estado"], rows, 8, y, [22,22,35,24,24,24,24,22]);
+  addFooter(docp); docp.save(`Reporte_Facturas_${today()}.pdf`);
+}
+function pdfDrivers() {
+  const { jsPDF } = window.jspdf; const docp = new jsPDF({ unit:"mm", format:"letter" });
+  let y = addPdfHeader(docp, "Reporte de Choferes", `Fecha: ${today()}`);
+  const rows = driverBalances().map(d=>[d.name, d.services, money(d.gross), money(d.commission), money(d.paid), money(d.payable), money(d.heldRetention)]);
+  pdfTable(docp, ["Chofer","Servicios","Bruto","Comisión","Pagado","A pagar","Retenido"], rows, 10, y, [40,20,27,27,27,27,27]);
+  addFooter(docp); docp.save(`Reporte_Choferes_${today()}.pdf`);
+}
+function pdfInvoice(id) {
+  const { jsPDF } = window.jspdf; const i=find(state.invoices,id); if(!i)return;
+  const s = find(state.services, i.serviceId) || {}; const c = find(state.clients, i.clientId) || {};
+  const docp = new jsPDF({ unit:"mm", format:"letter" });
+  let y = addPdfHeader(docp, `Factura ${i.no}`, `Fecha: ${i.date}`);
+  const W = docp.internal.pageSize.getWidth();
+  docp.setFont("helvetica","bold"); docp.setFontSize(10); docp.text("CLIENTE", 16, y); docp.text("DETALLE DEL DOCUMENTO", W - 16, y, {align:"right"}); y += 6;
+  docp.setFont("helvetica","normal"); docp.setFontSize(9);
+  docp.text(c.name || clientName(i.clientId), 16, y); docp.text(`Factura: ${i.no}`, W - 16, y, {align:"right"}); y += 5;
+  if (c.phone) docp.text(`Tel: ${c.phone}`, 16, y);
+  docp.text(`Estado: ${i.status}`, W - 16, y, {align:"right"}); y += 5;
+  if (c.email) { docp.text(`Email: ${c.email}`, 16, y); y += 5; }
+  if (c.address) { docp.text(docp.splitTextToSize(`Dirección: ${c.address}`, 90), 16, y); y += 8; }
+  y += 5;
+  const desc = `${s.type || "Servicio de transporte"} · ${s.origin || ""} → ${s.dest || ""} · ${num(s.miles).toFixed(2)} millas`;
+  pdfTable(docp, ["Descripción", "Cantidad", "Precio"], [[desc, "1", money(i.total)]], 16, y, [125, 25, 38]);
+  y += 32;
+  const paid = num(i.paid), balance = invBalance(i), taxRate = num(state.cfg.taxRate);
+  const subtotal = taxRate ? num(i.total) / (1 + taxRate / 100) : num(i.total);
+  const tax = num(i.total) - subtotal;
+  const tx = W - 76;
+  docp.setFont("helvetica","bold"); docp.setFontSize(10);
+  [["Subtotal", subtotal], [`IVU (${taxRate}%)`, tax], ["TOTAL", i.total], ["Pagado", paid], ["Balance", balance]].forEach(([label,val], idx)=>{ docp.text(label, tx, y); docp.text(`$${pdfMoneyValue(val)}`, W - 16, y, {align:"right"}); y += idx===2 ? 7 : 6; });
+  y += 18; docp.setFont("helvetica","normal"); docp.text("______________________________", 22, y); docp.text("______________________________", W - 86, y); y += 5;
+  docp.text("Cliente", 52, y, {align:"center"}); docp.text(state.cfg.repName || "Representante autorizado", W - 52, y, {align:"center"});
+  addFooter(docp); docp.save(`${pdfSafeName(i.no)}_${today()}.pdf`);
+}
 
 state = normalizeOperationalState(state);
 bind(); render(); initFirebase();

@@ -147,12 +147,25 @@
     </section>
 
     <section id="reportes" class="view hidden">
-      <div class="report-grid"><button id="pdfInvoices" class="report">PDF Facturas</button><button id="pdfDrivers" class="report">PDF Choferes</button><button id="exportCsv" class="report">Exportar CSV Servicios</button><button id="btnBackup" class="report">Backup JSON</button><label class="report file">Importar Backup<input id="fileImport" type="file" accept="application/json"></label><button id="btnDemo" class="report">Cargar Demo</button></div>
+      <div class="report-grid"><button id="pdfInvoices" class="report">PDF Reporte de Facturas</button><button id="pdfDrivers" class="report">PDF Reporte de Choferes</button><button id="exportCsv" class="report">Exportar CSV Servicios</button><button id="btnBackup" class="report">Backup JSON</button><label class="report file">Importar Backup<input id="fileImport" type="file" accept="application/json"></label><button id="btnDemo" class="report">Cargar Demo</button></div>
     </section>
 
     <section id="config" class="view hidden">
       <div class="head"><h2>Configuración</h2><button form="formConfig" class="btn primary">Guardar</button></div>
-      <form id="formConfig" class="form"><label>Negocio<input id="cfgName"></label><label>Teléfono<input id="cfgPhone"></label><label>Email<input id="cfgEmail"></label><label>Tarifa por milla<input id="cfgMile" type="number" step="0.01"></label></form>
+      <form id="formConfig" class="form">
+        <label>Logo de la empresa<input id="cfgLogo" type="file" accept="image/png,image/jpeg"></label>
+        <div id="logoPreview" class="logo-preview">Sin logo cargado</div>
+        <label>Nombre de empresa<input id="cfgName" placeholder="Puerto Rico Transport"></label>
+        <label class="wide">Dirección<input id="cfgAddress" placeholder="Dirección física o postal"></label>
+        <label>Teléfono<input id="cfgPhone" placeholder="787-000-0000"></label>
+        <label>Email<input id="cfgEmail" type="email"></label>
+        <label>Web<input id="cfgWeb" placeholder="www.tuempresa.com"></label>
+        <label>Registro / ID<input id="cfgTaxId" placeholder="Opcional"></label>
+        <label>Representante<input id="cfgRep" placeholder="Nombre autorizado"></label>
+        <label>IVU %<input id="cfgTaxRate" type="number" step="0.01" value="0"></label>
+        <label>Tarifa por milla<input id="cfgMile" type="number" step="0.01"></label>
+        <button id="btnRemoveLogo" type="button" class="btn ghost">Quitar Logo</button>
+      </form>
       <div class="panel muted"><p>Estado del sistema: <strong id="systemState">Inicializando</strong></p></div>
       <div class="panel danger-zone"><h2>Zona de Reset</h2><p class="muted">Borra datos locales y en Firebase para comenzar limpio. Haz backup antes.</p><button id="btnResetSystem" type="button" class="btn danger">Reset Total del Sistema</button></div>
     </section>
