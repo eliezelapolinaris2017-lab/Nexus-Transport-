@@ -1,9 +1,11 @@
-Nexus Transport PR V10 Operacional
+Nexus Transport PR V15 - Service ID Commission Fix
 
-1. Subir index.html, styles.css, app.js y firestore.rules.
-2. Firebase Authentication: activar Anonymous.
-3. Firestore Rules: copiar firestore.rules.
-4. GitHub Pages: abrir index.html desde HTTPS.
+Correcciones:
+- Comisiones por serviceId único, no por cliente/fecha.
+- Migración interna para servicios viejos sin ID o con ID duplicado.
+- Facturas amarradas a serviceId.
+- Tabla de servicios muestra ID corto para auditoría.
+- Choferes muestran cantidad de servicios y bruto antes de retención.
 
-Flujo funcional:
-Servicio -> Crear factura -> Registrar cobro -> Flujo de caja -> Balance chofer -> Retenciones -> Reportes PDF.
+Deployment GitHub Pages:
+Sube index.html, styles.css, app.js y firestore.rules si necesitas copiar reglas.

@@ -34,7 +34,46 @@ function freshState() {
 }
 function mergeState(raw) {
   const base = freshState();
-  return { ...base, ...(raw || {}), cfg: { ...base.cfg, ...(raw?.cfg || {}) } };
+  const merged = { ...base, ...(raw || {}), cfg: { ...base.cfg, ...(raw?.cfg || {}) } };
+  return normalizeOperationalState(merged);
+}
+function normalizeOperationalState(data) {
+  const base = freshState();
+  const keys = Object.keys(base).filter(k => Array.isArray(base[k]));
+  keys.forEach(key => {
+    data[key] = Array.isArray(data[key]) ? data[key] : [];
+    const seen = new Set();
+    data[key] = data[key].map((row, index) => {
+      const item = { ...(row || {}) };
+      const prefix = key === "services" ? "srv" : key.slice(0, 3);
+      if (!item.id || seen.has(item.id)) {
+        item.legacyId = item.id || "";
+        item.id = `${prefix}_${Date.now().toString(36)}_${index}_${Math.random().toString(36).slice(2, 7)}`;
+        item.migratedAt = new Date().toISOString();
+      }
+      seen.add(item.id);
+      return item;
+    });
+  });
+
+  // Garantía operacional: cada servicio tiene ID único y número visible.
+  data.services.forEach((s, index) => {
+    if (!s.id) s.id = `srv_${Date.now().toString(36)}_${index}`;
+    if (!s.no) s.no = `SRV-${String(index + 1).padStart(4, "0")}`;
+    s.commissionKey = s.id;
+  });
+
+  // Facturas amarradas únicamente a serviceId. Si una factura quedó sin serviceId, no se usa cliente/fecha para calcular comisión.
+  data.invoices.forEach((inv, index) => {
+    if (!inv.id) inv.id = `inv_${Date.now().toString(36)}_${index}`;
+    if (!inv.no) inv.no = `INV-${String(index + 1).padStart(4, "0")}`;
+    const service = data.services.find(s => s.id === inv.serviceId);
+    if (service) {
+      inv.clientId = service.clientId;
+      inv.total = Number(service.base || 0) + (Number(service.miles || 0) * Number(data.cfg?.mileRate || 0)) + Number(service.tolls || 0) + Number(service.expenses || 0);
+    }
+  });
+  return data;
 }
 function localLoad() {
   try { state = mergeState(JSON.parse(localStorage.getItem("nexusTransportState") || "null")); } catch { state = freshState(); }
@@ -98,7 +137,7 @@ function listenCloud() {
     localSave(); render(); setBadge("Sincronizado", "ok");
   }, err => { console.error(err); setBadge("Firebase bloqueado", "bad"); });
 }
-async function save() { localSave(); await pushCloud(); render(); }
+async function save() { state = normalizeOperationalState(state); recomputeInvoicePaid(); localSave(); await pushCloud(); render(); }
 function countAll(s) { return ["clients","drivers","providers","vehicles","services","invoices","payments"].reduce((a,k)=>a+(s[k]?.length||0),0); }
 
 function find(arr, id) { return (arr || []).find(x => x.id === id); }
@@ -207,40 +246,50 @@ function renderDashboard() {
   const cards = [["Facturado", billed], ["Cobrado", paid], ["Por cobrar", pending], ["A pagar choferes", driverDue], ["Servicios", state.services.length], ["Facturas", state.invoices.length], ["Caja neta", cashIn-cashOut], ["Retención retenida", driverBalances().reduce((a,d)=>a+d.heldRetention,0)]];
   $("kpis").innerHTML = cards.map(([l,v]) => `<div class="kpi"><span>${l}</span><strong>${typeof v==="number" && l!=="Servicios" && l!=="Facturas" ? money(v) : v}</strong></div>`).join("");
   table("tblRecent", ["Fecha","Servicio","Cliente","Ruta","Estado","Total"], filteredServices().slice(0,8).map(s=>[`<td>${s.date||""}</td>`,`<td>${s.no||""}</td>`,`<td>${clientName(s.clientId)}</td>`,`<td>${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}</td>`,`<td>${s.status}</td>`,`<td><strong>${money(serviceTotal(s))}</strong></td>`]));
-  $("driverSummary").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${escapeHtml(d.name)}</strong><span>Bruto ${money(d.gross)} · Retenido ${money(d.heldRetention)}</span></div><strong>${money(d.payable)}</strong></div>`).join("") : `<p class="muted">Sin choferes.</p>`;
+  $("driverSummary").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${escapeHtml(d.name)}</strong><span>${d.services} servicios · Bruto ${money(d.gross)} · Retenido ${money(d.heldRetention)}</span></div><strong>${money(d.payable)}</strong></div>`).join("") : `<p class="muted">Sin choferes.</p>`;
 }
 function renderTables() {
   table("tblClients", ["Nombre","Teléfono","Municipio","Facturado","Balance","Acción"], state.clients.map(c=>{const inv=state.invoices.filter(i=>i.clientId===c.id);return [`<td>${escapeHtml(c.name)}</td>`,`<td>${escapeHtml(c.phone)}</td>`,`<td>${escapeHtml(c.city)}</td>`,`<td>${money(inv.reduce((a,i)=>a+num(i.total),0))}</td>`,`<td>${money(inv.reduce((a,i)=>a+invBalance(i),0))}</td>`,`<td>${actionBtns("clients",c.id)}</td>`]}));
-  table("tblDrivers", ["Nombre","%","Ret.","Balance Neto","Retenido","Acción"], driverBalances().map(d=>[`<td>${escapeHtml(d.name)}</td>`,`<td>${d.pct}%</td>`,`<td>${d.retention}%</td>`,`<td><strong>${money(d.payable)}</strong></td>`,`<td>${money(d.heldRetention)}</td>`,`<td>${actionBtns("drivers",d.id)}</td>`]));
+  table("tblDrivers", ["Nombre","%","Ret.","Servicios","Bruto","Balance Neto","Retenido","Acción"], driverBalances().map(d=>[`<td>${escapeHtml(d.name)}</td>`,`<td>${d.pct}%</td>`,`<td>${d.retention}%</td>`,`<td><strong>${d.services}</strong></td>`,`<td>${money(d.gross)}</td>`,`<td><strong>${money(d.payable)}</strong></td>`,`<td>${money(d.heldRetention)}</td>`,`<td>${actionBtns("drivers",d.id)}</td>`]));
   table("tblProviders", ["Nombre","% Ded.","Balance deducción","Teléfono","Acción"], state.providers.map(p=>[`<td>${escapeHtml(p.name)}</td>`,`<td>${num(p.pct)}%</td>`,`<td>${money(providerDeduction(p.id))}</td>`,`<td>${escapeHtml(p.phone)}</td>`,`<td>${actionBtns("providers",p.id)}</td>`]));
   table("tblVehicles", ["Unidad","Tablilla","VIN","Marbete","Estado","Acción"], state.vehicles.map(v=>[`<td>${escapeHtml(v.unit)}</td>`,`<td>${escapeHtml(v.plate)}</td>`,`<td>${escapeHtml(v.vin)}</td>`,`<td>${v.exp||""}</td>`,`<td>${v.status}</td>`,`<td>${actionBtns("vehicles",v.id)}</td>`]));
-  table("tblServices", ["Fecha","No.","Cliente","Chofer","Ruta","Total","Estado","Acción"], filteredServices().map(s=>[`<td>${s.date||""}</td>`,`<td>${s.no}</td>`,`<td>${clientName(s.clientId)}</td>`,`<td>${driverName(s.driverId)}</td>`,`<td><a target="_blank" href="${mapUrl(s.origin,s.dest)}">${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}</a></td>`,`<td><strong>${money(serviceTotal(s))}</strong></td>`,`<td>${s.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-invoice="${s.id}">Facturar</button><button class="miniBtn" data-edit="services:${s.id}">Editar</button><button class="miniBtn danger" data-del="services:${s.id}">Borrar</button></div></td>`]));
+  table("tblServices", ["Fecha","No.","ID","Cliente","Chofer","Ruta","Total","Estado","Acción"], filteredServices().map(s=>[`<td>${s.date||""}</td>`,`<td>${s.no}</td>`,`<td><code>${escapeHtml(String(s.id).slice(-8))}</code></td>`,`<td>${clientName(s.clientId)}</td>`,`<td>${driverName(s.driverId)}</td>`,`<td><a target="_blank" href="${mapUrl(s.origin,s.dest)}">${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}</a></td>`,`<td><strong>${money(serviceTotal(s))}</strong></td>`,`<td>${s.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-invoice="${s.id}">Facturar</button><button class="miniBtn" data-edit="services:${s.id}">Editar</button><button class="miniBtn danger" data-del="services:${s.id}">Borrar</button></div></td>`]));
   table("tblInvoices", ["Factura","Fecha","Cliente","Servicio","Total","Pagado","Balance","Estado","Acción"], state.invoices.map(i=>[`<td>${i.no}</td>`,`<td>${i.date}</td>`,`<td>${clientName(i.clientId)}</td>`,`<td>${find(state.services,i.serviceId)?.no||""}</td>`,`<td>${money(i.total)}</td>`,`<td>${money(i.paid)}</td>`,`<td><strong>${money(invBalance(i))}</strong></td>`,`<td>${i.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-pdfinv="${i.id}">PDF</button><button class="miniBtn danger" data-del="invoices:${i.id}">Borrar</button></div></td>`]));
   table("tblPayments", ["Fecha","Factura","Cliente","Método","Monto"], state.payments.map(p=>{const i=find(state.invoices,p.invoiceId)||{};return [`<td>${p.date}</td>`,`<td>${i.no||""}</td>`,`<td>${clientName(p.clientId)}</td>`,`<td>${p.method}</td>`,`<td><strong>${money(p.amount)}</strong></td>`]}));
   table("tblCashflow", ["Fecha","Tipo","Categoría","Detalle","Método","Monto","Acción"], state.cashflow.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>[`<td>${x.date}</td>`,`<td>${x.type}</td>`,`<td>${escapeHtml(x.category)}</td>`,`<td>${escapeHtml(x.detail)}</td>`,`<td>${escapeHtml(x.method || "")}</td>`,`<td><strong>${money(x.amount)}</strong></td>`,`<td>${actionBtns("cashflow",x.id)}</td>`]));
 }
 function renderFinance() {
-  $("driverPayments").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${escapeHtml(d.name)}</strong><span>Bruto ${money(d.gross)} · Retención ${money(d.heldRetention)} · Pagado ${money(d.paidOut)}</span></div><button class="miniBtn" data-paydriver="${d.id}">Pagar ${money(d.payable)}</button></div>`).join("") : `<p class="muted">Sin balances.</p>`;
+  $("driverPayments").innerHTML = driverBalances().length ? driverBalances().map(d=>`<div class="listItem"><div><strong>${escapeHtml(d.name)}</strong><span>${d.services} servicios por ID · Bruto ${money(d.gross)} · Retención ${money(d.heldRetention)} · Pagado ${money(d.paidOut)}</span></div><button class="miniBtn" data-paydriver="${d.id}">Pagar ${money(d.payable)}</button></div>`).join("") : `<p class="muted">Sin balances.</p>`;
 }
 function renderConfig() { $("cfgName").value = state.cfg.name || ""; $("cfgPhone").value = state.cfg.phone || ""; $("cfgEmail").value = state.cfg.email || ""; $("cfgMile").value = state.cfg.mileRate || 0; }
 function mapUrl(origin, dest) { return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin||"")}&destination=${encodeURIComponent(dest||"")}`; }
 
 function driverBalance(driverId) {
   const d = find(state.drivers, driverId) || {};
-  const seen = new Set();
-  const related = state.services.filter(s => {
-    if (!serviceIsCommissionable(s) || s.driverId !== driverId || seen.has(s.id)) return false;
-    seen.add(s.id);
-    return true;
-  });
-  // Comisión por ID único de servicio: permite varios servicios al mismo cliente en el mismo día sin pisarse.
-  const gross = related.reduce((a,s)=>a + serviceTotal(s) * (num(d.pct) / 100), 0);
+  const related = state.services
+    .filter(s => serviceIsCommissionable(s) && s.driverId === driverId)
+    .map(s => ({ ...s, commissionKey: s.id }));
+
+  // Comisión operacional por serviceId: NO agrupa por cliente, fecha, ruta ni factura.
+  // Mismo cliente + mismo día + servicios diferentes = comisiones separadas.
+  const gross = related.reduce((a, s) => a + serviceTotal(s) * (num(d.pct) / 100), 0);
   const retentionGross = gross * (num(d.retention) / 100);
-  const paidOut = state.driverPayouts.filter(x=>x.driverId===driverId).reduce((a,x)=>a+num(x.amount),0);
-  const retPaid = state.retentionPayments.filter(x=>x.driverId===driverId).reduce((a,x)=>a+num(x.amount),0);
+  const paidOut = state.driverPayouts.filter(x => x.driverId === driverId).reduce((a,x)=>a+num(x.amount),0);
+  const retPaid = state.retentionPayments.filter(x => x.driverId === driverId).reduce((a,x)=>a+num(x.amount),0);
   const payable = Math.max(0, gross - retentionGross - paidOut);
   const heldRetention = Math.max(0, retentionGross - retPaid);
-  return { id: driverId, name: d.name || "—", pct: num(d.pct), retention: num(d.retention), services: related.length, gross, payable, paidOut, heldRetention };
+  return {
+    id: driverId,
+    name: d.name || "—",
+    pct: num(d.pct),
+    retention: num(d.retention),
+    services: related.length,
+    serviceIds: related.map(s => s.id),
+    gross,
+    payable,
+    paidOut,
+    heldRetention
+  };
 }
 function driverBalances(){ return state.drivers.map(d => driverBalance(d.id)); }
 function providerDeduction(providerId) { const p=find(state.providers,providerId)||{}; return state.services.filter(s=>s.providerId===providerId && serviceIsCommissionable(s)).reduce((a,s)=>a+serviceTotal(s)*(num(p.pct)/100),0); }
@@ -377,4 +426,5 @@ function pdfInvoices() { pdf("Reporte Facturas", state.invoices.map(i=>`${i.no} 
 function pdfDrivers() { pdf("Reporte Choferes", driverBalances().map(d=>`${d.name} | Bruto ${money(d.gross)} | Neto a pagar ${money(d.payable)} | Retenido ${money(d.heldRetention)}`)); }
 function pdfInvoice(id) { const i=find(state.invoices,id); if(!i)return; pdf(`Factura ${i.no}`,[state.cfg.name,`Cliente: ${clientName(i.clientId)}`,`Fecha: ${i.date}`,`Total: ${money(i.total)}`,`Pagado: ${money(i.paid)}`,`Balance: ${money(invBalance(i))}`]); }
 
+state = normalizeOperationalState(state);
 bind(); render(); initFirebase();
