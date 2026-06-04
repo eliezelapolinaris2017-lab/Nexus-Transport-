@@ -62,3 +62,13 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;min-w
 
 /* V13 operational controls */
 .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.miniBtn{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 10px;font-size:12px;font-weight:850;color:var(--ink);cursor:pointer}.miniBtn:hover{border-color:#b9cff0;background:#f8fbff}.miniBtn.danger,.btn.danger{color:#991b1b;background:#fff5f5;border:1px solid #fecaca}.btn.danger:hover,.miniBtn.danger:hover{background:#fee2e2}.danger-zone{border-color:#fecaca;background:#fffafa}.form.mini{align-items:end}
+
+.route-helper{
+  border:1px solid rgba(37,99,235,.18);
+  background:rgba(37,99,235,.07);
+  color:#1e3a8a;
+  padding:12px 14px;
+  font-size:.9rem;
+  border-radius:12px;
+}
+body.dark .route-helper{color:#bfdbfe;background:rgba(59,130,246,.12);border-color:rgba(147,197,253,.22)}
