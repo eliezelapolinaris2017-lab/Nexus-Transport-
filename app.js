@@ -142,6 +142,7 @@ function countAll(s) { return ["clients","drivers","providers","vehicles","servi
 
 function find(arr, id) { return (arr || []).find(x => x.id === id); }
 function serviceTotal(s) { return num(s.base) + (num(s.miles) * num(state.cfg.mileRate)) + num(s.tolls) + num(s.expenses); }
+function milesLabel(s) { return `${num(s.miles).toFixed(2)} mi${s.milesVerified ? " · reales" : (s.routeAuto ? " · estimadas" : "")}`; }
 function invBalance(i) { return Math.max(0, num(i.total) - num(i.paid)); }
 function recomputeInvoicePaid() {
   state.invoices.forEach(inv => {
@@ -253,7 +254,7 @@ function renderTables() {
   table("tblDrivers", ["Nombre","%","Ret.","Servicios","Bruto","Balance Neto","Retenido","Acción"], driverBalances().map(d=>[`<td>${escapeHtml(d.name)}</td>`,`<td>${d.pct}%</td>`,`<td>${d.retention}%</td>`,`<td><strong>${d.services}</strong></td>`,`<td>${money(d.gross)}</td>`,`<td><strong>${money(d.payable)}</strong></td>`,`<td>${money(d.heldRetention)}</td>`,`<td>${actionBtns("drivers",d.id)}</td>`]));
   table("tblProviders", ["Nombre","% Ded.","Balance deducción","Teléfono","Acción"], state.providers.map(p=>[`<td>${escapeHtml(p.name)}</td>`,`<td>${num(p.pct)}%</td>`,`<td>${money(providerDeduction(p.id))}</td>`,`<td>${escapeHtml(p.phone)}</td>`,`<td>${actionBtns("providers",p.id)}</td>`]));
   table("tblVehicles", ["Unidad","Tablilla","VIN","Marbete","Estado","Acción"], state.vehicles.map(v=>[`<td>${escapeHtml(v.unit)}</td>`,`<td>${escapeHtml(v.plate)}</td>`,`<td>${escapeHtml(v.vin)}</td>`,`<td>${v.exp||""}</td>`,`<td>${v.status}</td>`,`<td>${actionBtns("vehicles",v.id)}</td>`]));
-  table("tblServices", ["Fecha","No.","ID","Cliente","Chofer","Ruta","Total","Estado","Acción"], filteredServices().map(s=>[`<td>${s.date||""}</td>`,`<td>${s.no}</td>`,`<td><code>${escapeHtml(String(s.id).slice(-8))}</code></td>`,`<td>${clientName(s.clientId)}</td>`,`<td>${driverName(s.driverId)}</td>`,`<td><a target="_blank" href="${mapUrl(s.origin,s.dest)}">${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}</a></td>`,`<td><strong>${money(serviceTotal(s))}</strong></td>`,`<td>${s.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-invoice="${s.id}">Facturar</button><button class="miniBtn" data-edit="services:${s.id}">Editar</button><button class="miniBtn danger" data-del="services:${s.id}">Borrar</button></div></td>`]));
+  table("tblServices", ["Fecha","No.","ID","Cliente","Chofer","Ruta","Millas","Total","Estado","Acción"], filteredServices().map(s=>[`<td>${s.date||""}</td>`,`<td>${s.no}</td>`,`<td><code>${escapeHtml(String(s.id).slice(-8))}</code></td>`,`<td>${clientName(s.clientId)}</td>`,`<td>${driverName(s.driverId)}</td>`,`<td><a class="routeLinkBtn" target="_blank" href="${mapUrl(s.origin,s.dest)}">${escapeHtml(s.origin)} → ${escapeHtml(s.dest)}</a></td>`,`<td><span class="badgeMiles">${milesLabel(s)}</span></td>`,`<td><strong>${money(serviceTotal(s))}</strong></td>`,`<td>${s.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-map="${s.id}">Ver ruta</button><button class="miniBtn" data-miles="${s.id}">Editar millas</button><button class="miniBtn" data-invoice="${s.id}">Facturar</button><button class="miniBtn" data-edit="services:${s.id}">Editar</button><button class="miniBtn danger" data-del="services:${s.id}">Borrar</button></div></td>`]));
   table("tblInvoices", ["Factura","Fecha","Cliente","Servicio","Total","Pagado","Balance","Estado","Acción"], state.invoices.map(i=>[`<td>${i.no}</td>`,`<td>${i.date}</td>`,`<td>${clientName(i.clientId)}</td>`,`<td>${find(state.services,i.serviceId)?.no||""}</td>`,`<td>${money(i.total)}</td>`,`<td>${money(i.paid)}</td>`,`<td><strong>${money(invBalance(i))}</strong></td>`,`<td>${i.status}</td>`,`<td><div class="actions"><button class="miniBtn" data-pdfinv="${i.id}">PDF</button><button class="miniBtn danger" data-del="invoices:${i.id}">Borrar</button></div></td>`]));
   table("tblPayments", ["Fecha","Factura","Cliente","Método","Monto"], state.payments.map(p=>{const i=find(state.invoices,p.invoiceId)||{};return [`<td>${p.date}</td>`,`<td>${i.no||""}</td>`,`<td>${clientName(p.clientId)}</td>`,`<td>${p.method}</td>`,`<td><strong>${money(p.amount)}</strong></td>`]}));
   table("tblCashflow", ["Fecha","Tipo","Categoría","Detalle","Método","Monto","Acción"], state.cashflow.slice().sort((a,b)=>String(b.date).localeCompare(String(a.date))).map(x=>[`<td>${x.date}</td>`,`<td>${x.type}</td>`,`<td>${escapeHtml(x.category)}</td>`,`<td>${escapeHtml(x.detail)}</td>`,`<td>${escapeHtml(x.method || "")}</td>`,`<td><strong>${money(x.amount)}</strong></td>`,`<td>${actionBtns("cashflow",x.id)}</td>`]));
@@ -263,6 +264,42 @@ function renderFinance() {
 }
 function renderConfig() { $("cfgName").value = state.cfg.name || ""; $("cfgPhone").value = state.cfg.phone || ""; $("cfgEmail").value = state.cfg.email || ""; $("cfgMile").value = state.cfg.mileRate || 0; }
 function mapUrl(origin, dest) { return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin||"")}&destination=${encodeURIComponent(dest||"")}`; }
+function openMapForRoute(origin, dest) {
+  if (!origin || !dest) return alert("Escribe origen y destino para abrir la ruta.");
+  window.open(mapUrl(origin, dest), "_blank", "noopener,noreferrer");
+}
+function confirmRealMiles(serviceId) {
+  const s = find(state.services, serviceId);
+  if (!s) return alert("No encontré ese servicio.");
+  openMapForRoute(s.origin, s.dest);
+  const value = prompt(`Verifica la ruta en Google Maps y escribe las millas reales para ${s.no}:`, num(s.miles).toFixed(2));
+  if (value === null) return;
+  const miles = num(value);
+  if (miles <= 0) return alert("Las millas deben ser mayor de 0.");
+  s.miles = miles;
+  s.milesVerified = true;
+  s.routeAuto = false;
+  s.routeNote = "Millas reales confirmadas manualmente desde Google Maps";
+  s.updatedAt = stamp();
+  upsert("services", s);
+  const inv = state.invoices.find(i => i.serviceId === s.id);
+  if (inv) { inv.total = serviceTotal(s); upsert("invoices", inv); recomputeInvoicePaid(); }
+  save();
+  render();
+}
+function confirmCurrentFormMiles() {
+  const origin = $("sOrigin")?.value || "";
+  const dest = $("sDest")?.value || "";
+  openMapForRoute(origin, dest);
+  const current = num($("sMiles")?.value || 0).toFixed(2);
+  const value = prompt("Verifica la ruta en Google Maps y escribe las millas reales:", current);
+  if (value === null) return;
+  const miles = num(value);
+  if (miles <= 0) return alert("Las millas deben ser mayor de 0.");
+  if ($("sMiles")) { $("sMiles").value = miles.toFixed(2); $("sMiles").dataset.auto = "0"; }
+  const box = $("routeHelper");
+  if (box) box.textContent = `Millas reales confirmadas: ${miles.toFixed(2)} mi. Al guardar, se recalcula factura/comisión.`;
+}
 
 function driverBalance(driverId) {
   const d = find(state.drivers, driverId) || {};
@@ -397,19 +434,21 @@ function bind() {
   $("btnSync").onclick = async () => { await pullCloud(); await pushCloud(); alert("Sincronización ejecutada."); };
   fillPRPlaces();
   ["sOrigin","sDest"].forEach(id => $(id)?.addEventListener("input", () => updateRouteEstimate(false)));
+  $("btnOpenCurrentRoute")?.addEventListener("click", () => openMapForRoute($("sOrigin")?.value || "", $("sDest")?.value || ""));
+  $("btnConfirmCurrentMiles")?.addEventListener("click", () => confirmCurrentFormMiles());
   $("sMiles")?.addEventListener("input", () => { $("sMiles").dataset.auto = "0"; });
   $("formClient").onsubmit = e => { e.preventDefault(); upsert("clients", { id: $("cId").value || uid("cli"), name: $("cName").value, phone: $("cPhone").value, email: $("cEmail").value, city: $("cCity").value, address: $("cAddress").value }); e.target.reset(); save(); };
   $("formDriver").onsubmit = e => { e.preventDefault(); upsert("drivers", { id: $("dId").value || uid("drv"), name: $("dName").value, phone: $("dPhone").value, pct: num($("dPct").value), retention: num($("dRet").value), lic: $("dLic").value, status: $("dStatus").value }); e.target.reset(); $("dPct").value=70; $("dRet").value=10; save(); };
   $("formProvider").onsubmit = e => { e.preventDefault(); upsert("providers", { id: $("pId").value || uid("prov"), name: $("pName").value, pct: num($("pPct").value), phone: $("pPhone").value, status: $("pStatus").value }); e.target.reset(); $("pPct").value=10; save(); };
   $("formVehicle").onsubmit = e => { e.preventDefault(); upsert("vehicles", { id: $("vId").value || uid("veh"), unit: $("vUnit").value, plate: $("vPlate").value, vin: $("vVin").value, exp: $("vExp").value, status: $("vStatus").value }); e.target.reset(); save(); };
-  $("formService").onsubmit = e => { e.preventDefault(); updateRouteEstimate(true); const id = $("sId").value || uid("srv"); const old = find(state.services,id) || {}; const est = estimateRouteMiles($("sOrigin").value, $("sDest").value); const s = { ...old, id, no: old.no || nextNo("SRV", state.services), date: $("sDate").value || today(), clientId: $("sClient").value, driverId: $("sDriver").value, providerId: $("sProvider").value, vehicleId: $("sVehicle").value, origin: $("sOrigin").value, dest: $("sDest").value, type: $("sType").value, base: num($("sBase").value), miles: num($("sMiles").value), routeAuto: !!est.ok, routeNote: est.ok ? est.message : "Millas manuales", tolls: num($("sTolls").value), expenses: num($("sExpenses").value), status: $("sStatus").value, notes: $("sNotes").value, createdAt: old.createdAt || stamp(), updatedAt: stamp() }; upsert("services", s); const inv = state.invoices.find(i => i.serviceId === s.id); if (inv) { inv.total = serviceTotal(s); upsert("invoices", inv); recomputeInvoicePaid(); } e.target.reset(); $("sDate").value=today(); if($("sMiles")) { $("sMiles").dataset.auto="1"; } updateRouteEstimate(); save(); };
+  $("formService").onsubmit = e => { e.preventDefault(); updateRouteEstimate(true); const id = $("sId").value || uid("srv"); const old = find(state.services,id) || {}; const est = estimateRouteMiles($("sOrigin").value, $("sDest").value); const s = { ...old, id, no: old.no || nextNo("SRV", state.services), date: $("sDate").value || today(), clientId: $("sClient").value, driverId: $("sDriver").value, providerId: $("sProvider").value, vehicleId: $("sVehicle").value, origin: $("sOrigin").value, dest: $("sDest").value, type: $("sType").value, base: num($("sBase").value), miles: num($("sMiles").value), routeAuto: !!est.ok && $("sMiles")?.dataset.auto !== "0", milesVerified: $("sMiles")?.dataset.auto === "0" || !!old.milesVerified, routeNote: ($("sMiles")?.dataset.auto === "0") ? "Millas reales confirmadas manualmente desde Google Maps" : (est.ok ? est.message : "Millas manuales"), tolls: num($("sTolls").value), expenses: num($("sExpenses").value), status: $("sStatus").value, notes: $("sNotes").value, createdAt: old.createdAt || stamp(), updatedAt: stamp() }; upsert("services", s); const inv = state.invoices.find(i => i.serviceId === s.id); if (inv) { inv.total = serviceTotal(s); upsert("invoices", inv); recomputeInvoicePaid(); } e.target.reset(); $("sDate").value=today(); if($("sMiles")) { $("sMiles").dataset.auto="1"; } updateRouteEstimate(); save(); };
   $("btnCreateInvoice").onclick = () => createInvoice($("invoiceService").value);
   $("formPayment").onsubmit = registerPayment;
   $("formRetention").onsubmit = payRetention;
   $("formCashflow").onsubmit = saveCashflow;
   $("btnClearCashflow").onclick = clearCashflowForm;
   $("formConfig").onsubmit = e => { e.preventDefault(); state.cfg = { ...state.cfg, name: $("cfgName").value, phone: $("cfgPhone").value, email: $("cfgEmail").value, mileRate: num($("cfgMile").value) }; save(); };
-  document.body.addEventListener("click", e => { const t = e.target; if (t.dataset.del) { const [key,id] = t.dataset.del.split(":"); remove(key,id); } if (t.dataset.edit) { const [key,id] = t.dataset.edit.split(":"); edit(key,id); } if (t.dataset.invoice) createInvoice(t.dataset.invoice); if (t.dataset.paydriver) payDriver(t.dataset.paydriver); if (t.dataset.pdfinv) pdfInvoice(t.dataset.pdfinv); if (t.dataset.go) openView(t.dataset.go); });
+  document.body.addEventListener("click", e => { const t = e.target.closest("button"); if (!t) return; if (t.dataset.del) { const [key,id] = t.dataset.del.split(":"); remove(key,id); } if (t.dataset.edit) { const [key,id] = t.dataset.edit.split(":"); edit(key,id); } if (t.dataset.invoice) createInvoice(t.dataset.invoice); if (t.dataset.paydriver) payDriver(t.dataset.paydriver); if (t.dataset.pdfinv) pdfInvoice(t.dataset.pdfinv); if (t.dataset.map) { const s = find(state.services, t.dataset.map); if (s) openMapForRoute(s.origin, s.dest); } if (t.dataset.miles) confirmRealMiles(t.dataset.miles); if (t.dataset.go) openView(t.dataset.go); });
   $("btnPdfExec").onclick = pdfExecutive; $("btnBackup").onclick = backup; $("fileImport").onchange = importBackup; $("btnDemo").onclick = seedDemo; $("pdfInvoices").onclick = pdfInvoices; $("pdfDrivers").onclick = pdfDrivers; $("exportCsv").onclick = exportCsv;
   $("btnResetSystem") && ($("btnResetSystem").onclick = resetSystem);
   $("sDate").value = today(); $("payDate").value = today(); $("retDate").value = today(); $("cfDate").value = today();

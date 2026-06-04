@@ -1,11 +1,12 @@
-Nexus Transport PR V15 - Service ID Commission Fix
+Nexus Transport PR V16 - Ruta y Millas Reales
 
-Correcciones:
-- Comisiones por serviceId único, no por cliente/fecha.
-- Migración interna para servicios viejos sin ID o con ID duplicado.
-- Facturas amarradas a serviceId.
-- Tabla de servicios muestra ID corto para auditoría.
-- Choferes muestran cantidad de servicios y bruto antes de retención.
+Cambios:
+- Botón Ver ruta en Google Maps desde cada servicio.
+- Botón Editar millas desde cada servicio.
+- Confirmación manual de millas reales después de revisar Google Maps.
+- Las millas reales recalculan total, factura, comisión de chofer, retención y dashboard.
+- El formulario de servicio también incluye Ver ruta y Confirmar millas reales.
+- Se mantiene cálculo estimado solo como referencia inicial.
 
-Deployment GitHub Pages:
-Sube index.html, styles.css, app.js y firestore.rules si necesitas copiar reglas.
+Deployment:
+Sube index.html, styles.css, app.js y firestore.rules a tu repositorio de GitHub Pages.

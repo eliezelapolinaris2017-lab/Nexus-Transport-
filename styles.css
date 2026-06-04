@@ -72,3 +72,9 @@ table{width:100%;border-collapse:separate;border-spacing:0;background:#fff;min-w
   border-radius:12px;
 }
 body.dark .route-helper{color:#bfdbfe;background:rgba(59,130,246,.12);border-color:rgba(147,197,253,.22)}
+
+/* V16: ruta y millas reales */
+.route-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:-8px;margin-bottom:12px}
+.route-actions .miniBtn{width:auto}
+.routeLinkBtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none}
+.badgeMiles{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;background:rgba(15,23,42,.06);border:1px solid rgba(15,23,42,.10);font-size:12px;color:var(--muted)}
